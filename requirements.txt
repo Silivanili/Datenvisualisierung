@@ -1,2 +1,7 @@
 pandas
 matplotlib.pyplot
+dash
+plotly.express
+
+
+
