@@ -7,10 +7,18 @@ import plotly.express as px
 import plotly.graph_objects as go
 from flask_caching import Cache
 import uuid
+import os   
 
+DATASET_OPTIONS = [
+    {"label": "games_march2025_cleaned.csv", "value": "games_march2025_cleaned.csv"},
+    {"label": "games_march2025_full.csv", "value": "games_march2025_full.csv"},
+    {"label": "games_may2024_cleaned.csv", "value": "games_may2024_cleaned.csv"},
+    {"label": "games_may2024_full.csv", "value": "games_may2024_full.csv"},
+]
 # Initialize app
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
 app.title = "Steam Dashboard"
+server = app.server
 
 # Initialize server-side cache (filesystem). Tune CACHE_DIR and timeout as needed.
 cache = Cache(app.server, config={
@@ -110,25 +118,25 @@ def histogram_of_numeric_column_fig(df, series_col, title="Histogram", xlabel=No
 
 def scatter_release_vs_fig(df, y_col, hide_zero=False, operator=None, threshold=None, max_points=20000):
     """
-    Scatter plot: X = release_date (datetime), Y = y_col.
+    Scatter plot: X = positive, Y = *_playtime_*.
     Filters:
       - hide_zero: if True, drop rows where y_col == 0
       - operator/threshold: apply comparator to the y_col (operator in {"eq","ge","le","gt","lt"})
     For performance sample to max_points if dataset larger.
     """
-    if "release_date" not in df.columns:
-        return px.scatter(title="Column 'release_date' not found")
+    if "positive" not in df.columns:
+        return px.scatter(title="Column 'positive' not found")
     if y_col not in df.columns:
         return px.scatter(title=f"Column '{y_col}' not found")
 
-    # Ensure release_date is datetime
-    if not np.issubdtype(df["release_date"].dtype, np.datetime64):
-        df = df.copy()
-        df["release_date"] = pd.to_datetime(df["release_date"], errors="coerce")
+    # Can I delete this? 
+    #if not np.issubdtype(df["positive"].dtype, np.datetime64):
+    #    df = df.copy()
+    #    df["positive"] = pd.to_datetime(df["positive"], errors="coerce")
 
-    data = df.dropna(subset=["release_date", y_col]).copy()
+    data = df.dropna(subset=["positive", y_col]).copy()
     if data.empty:
-        return px.scatter(title=f"No data for '{y_col}' vs release_date")
+        return px.scatter(title=f"No data for '{y_col}' vs positive")
 
     # Ensure y is numeric if possible
     data[y_col] = pd.to_numeric(data[y_col], errors="coerce")
@@ -169,13 +177,13 @@ def scatter_release_vs_fig(df, y_col, hide_zero=False, operator=None, threshold=
     hover_cols = [c for c in ["name", "appid", "main_genre"] if c in data.columns]
     fig = px.scatter(
         data,
-        x="release_date",
+        x="positive",
         y=y_col,
         color=color,
         hover_data=hover_cols,
         title=f"{y_col} over Time (scatter)"
     )
-    fig.update_layout(xaxis_title="Release Date", yaxis_title=y_col)
+    fig.update_layout(xaxis_title="positive", yaxis_title=y_col)
     return fig
 
 # =========================
@@ -286,9 +294,34 @@ sidebar = html.Div(
         html.A("Link to dataset", href="https://www.kaggle.com/datasets/artermiloff/steam-games-dataset", className="small text-decoration-none text-secondary"),
         html.Hr(),
 
-        dbc.Label("Dataset CSV Path or URL:", className="small text-muted"),
-        dbc.Input(id="dataset-path", type="text", placeholder="Enter local path or URL to CSV", size="sm", className="mb-2"),
-        dbc.Button("Load Dataset", id="load-dataset", color="primary", size="sm", className="mb-3"),
+        dbc.Label("Select Dataset:", className="small text-muted"),
+        dcc.Dropdown(
+            id="dataset-path",               
+            options=DATASET_OPTIONS,        # populated from the list above
+            placeholder="Choose a dataset",
+            clearable=False,
+            className="mb-2",               
+        ),
+        dbc.Button(
+            "Load Dataset",
+            id="load-dataset",
+            color="primary",
+            size="sm",
+            className="mb-3",
+        ),
+
+        html.H5("Genre Filter", className="text-primary fw-bold mb-2"),
+        dbc.Label("Select Genres:", className="small text-muted"),
+        dcc.Dropdown(
+            id="genre-filter",
+            options=[],  # to be populated dynamically
+            value=["Action"],  # default selection
+            multi=True,
+            placeholder="Choose genres",
+            className="mb-3"
+        ),
+        html.Hr(),
+
 
         html.H5("View Settings", className="text-primary fw-bold mb-2"),
         dbc.Checklist(
@@ -442,11 +475,18 @@ def display_page(pathname):
 )
 def load_dataset(n_clicks, path_or_url):
     """
-    Loads CSV into server-side cache and stores only a dataset_id in dcc.Store.
-    Also precomputes 'main_genre' and 'release_year' and casts common numeric columns.
+    Loads CSV into server‑side cache and stores only a dataset_id in dcc.Store.
+    Also pre‑computes 'main_genre' and 'release_year' and casts common numeric columns.
     """
     if not path_or_url:
         return None
+
+    if not (path_or_url.startswith("http://") or path_or_url.startswith("https://")):
+        path_or_url = os.path.join(
+            os.path.abspath(os.path.dirname(__file__)),  
+            path_or_url,
+        )
+
     try:
         df = pd.read_csv(path_or_url, low_memory=False)
     except Exception as e:
@@ -491,33 +531,67 @@ def load_dataset(n_clicks, path_or_url):
     Output("y-axis-select", "value"),
     Input("df-store", "data"),
 )
+
 def populate_y_options(df_meta):
     """
-    When a dataset is loaded, populate the Y-axis select with available columns.
-    Default selection prefers 'average_playtime_forever' or 'price' or first numeric column.
+    Populate the Y-axis dropdown after a dataset is loaded.
+    Prefer known playtime-related columns.
     """
     if not df_meta:
         return [], None
+
     dataset_id = df_meta.get("dataset_id")
     if not dataset_id:
         return [], None
+
     df = cache.get(dataset_id)
     if df is None:
         return [], None
 
     cols = df.columns.tolist()
-    options = [{"label": c, "value": c} for c in cols]
 
-    default = None
-    for prefer in ("average_playtime_forever", "price"):
-        if prefer in cols:
-            default = prefer
-            break
+    playtime_cols = [
+        "average_playtime_forever",
+        "average_playtime_2weeks",
+        "median_playtime_forever",
+        "median_playtime_2weeks",
+    ]
+
+    options = [{"label": c, "value": c} for c in playtime_cols if c in cols]    
+
+    default = next((c for c in playtime_cols if c in cols), None)
+
     if default is None:
         numeric = df.select_dtypes(include=[np.number]).columns.tolist()
         default = numeric[0] if numeric else (cols[0] if cols else None)
 
     return options, default
+
+
+
+@app.callback(
+    Output("genre-filter", "options"),
+    Output("genre-filter", "value"),
+    Input("df-store", "data"),
+)
+def populate_genre_dropdown(df_meta):
+    if not df_meta:
+        return [], ["Action"]
+    dataset_id = df_meta.get("dataset_id")
+    if not dataset_id:
+        return [], ["Action"]
+
+    df = cache.get(dataset_id)
+    if df is None or "main_genre" not in df.columns:
+        return [], ["Action"]
+
+    genres = sorted(df["main_genre"].dropna().unique().tolist())
+    options = [{"label": g, "value": g} for g in genres]
+
+    # Always include 'Action' as first/default selection
+    default = ["Action"] if "Action" in genres else (genres[:1] if genres else [])
+    return options, default
+
 
 # =========================
 # Callbacks to render interactive Plotly figures on the GENRE PAGE
@@ -527,10 +601,12 @@ def populate_y_options(df_meta):
     Output("genre-plot1", "children"),
     Input("view-settings", "value"),
     Input("df-store", "data"),
-    State("y-axis-select", "value"),
-    State("num-genres", "value")
+    Input("genre-filter", "value"),
+    Input("y-axis-select", "value"),
+    Input("num-genres", "value")
 )
-def update_genre_mean_playtime(view_settings, df_meta, y_axis_input, num_genres):
+
+def update_genre_mean_playtime(view_settings, df_meta, selected_genres, y_axis_input, num_genres):
     # If dataset not loaded show helpful message
     if not df_meta:
         return html.Div(
@@ -545,44 +621,72 @@ def update_genre_mean_playtime(view_settings, df_meta, y_axis_input, num_genres)
     if not dataset_id:
         return html.Div("No dataset id found.", className="text-danger")
 
+    # load cached dataframe into a *different* local name to avoid shadowing bugs
+    cached_df = cache.get(dataset_id)
+    if cached_df is None:
+        return html.Div("Dataset not found in cache.", className="text-danger")
+
+    if selected_genres:
+        # selected_genres may be a single string or list; convert to list
+        if isinstance(selected_genres, str):
+            selected_genres = [selected_genres]
+        cached_df = cached_df[cached_df["main_genre"].isin(selected_genres)]
+
     y_var = y_axis_input or "average_playtime_forever"
     top_n = int(num_genres) if num_genres else 15
 
-    agg_json = compute_mean_playtime_by_genre(dataset_id, y_var, top_n)
-    if not agg_json:
+    if y_var not in cached_df.columns:
         return html.Div(f"No data available for column '{y_var}'.", className="text-muted")
 
-    genre_playtime_df = pd.read_json(agg_json, orient="split")
-    fig = mean_playtime_by_genre_fig_from_df(genre_playtime_df, y_variable=y_var)
+    agg = (
+        cached_df.groupby("main_genre")[y_var]
+                 .mean()
+                 .sort_values(ascending=False)
+                 .head(int(top_n))
+                 .reset_index()
+    )
+
+    if agg.empty:
+        return html.Div("No data after applying genre filter / selected Y variable.", className="text-muted")
+
+    fig = mean_playtime_by_genre_fig_from_df(agg, y_variable=y_var)
     return dcc.Graph(figure=fig, config={"displayModeBar": True})
 
 @app.callback(
     Output("genre-plot2", "children"),
     Input("df-store", "data"),
+    Input("genre-filter", "value"),
     State("num-genres", "value")
 )
-def update_genre_games_per_year(df_meta, num_genres):
+
+def update_genre_games_per_year(df_meta, selected_genres, num_genres):
     if not df_meta:
         return "(Plot Area 2)"
     dataset_id = df_meta.get("dataset_id")
     if not dataset_id:
         return "(Plot Area 2)"
 
-    top_n = int(num_genres) if num_genres else None
-    if top_n:
-        df = cache.get(dataset_id)
-        if df is None:
-            return html.Div("Dataset not found in cache.", className="text-danger")
-        if "main_genre" in df.columns:
-            top_genres = tuple(df["main_genre"].value_counts().head(top_n).index.tolist())
-        else:
-            top_genres = None
-    else:
-        top_genres = tuple(["Action", "Indie", "RPG", "Strategy"])
+    cached_df = cache.get(dataset_id)
+    if cached_df is None:
+        return html.Div("Dataset not found in cache.", className="text-danger")
 
-    counts_json = compute_games_per_year_counts(dataset_id, top_genres, None, None)
+    # User selects genres
+    if selected_genres:
+        if isinstance(selected_genres, str):
+            selected_genres = [selected_genres]
+        genres_tuple = tuple(selected_genres)
+    else:
+        # Use top N genres or default list
+        top_n = int(num_genres) if num_genres else 4
+        if "main_genre" in cached_df.columns:
+            genres_tuple = tuple(cached_df["main_genre"].value_counts().head(top_n).index.tolist())
+        else:
+            genres_tuple = tuple(["Action", "Indie", "RPG", "Strategy"])
+
+    counts_json = compute_games_per_year_counts(dataset_id, genres_tuple, None, None)
     if not counts_json:
         return html.Div("No data for selected genres / years.", className="text-muted")
+
     counts_df = pd.read_json(counts_json, orient="split")
     fig = games_per_year_by_genre_fig_from_df(counts_df)
     return dcc.Graph(figure=fig, config={"displayModeBar": True})
@@ -610,15 +714,17 @@ def update_genre_histogram(df_meta, y_axis_input):
 # Scatter on GAME PAGE (X = release_date, Y selectable from sidebar)
 # - includes options: hide y==0 and general comparator filter
 # =========================
+
 @app.callback(
     Output("game-plot1", "children"),
     Input("df-store", "data"),
     Input("y-axis-select", "value"),
     Input("hide-zero-reviews", "value"),
     Input("y-filter-operator", "value"),
-    Input("y-filter-value", "value")
+    Input("y-filter-value", "value"),
+    Input("genre-filter", "value"),
 )
-def update_game_scatter(df_meta, selected_y, hide_zero_value, operator, threshold):
+def update_game_scatter(df_meta, selected_y, hide_zero_value, operator, threshold, selected_genres):
     if not df_meta:
         return html.Div(
             [
@@ -627,19 +733,32 @@ def update_game_scatter(df_meta, selected_y, hide_zero_value, operator, threshol
             ],
             className="text-muted"
         )
+
     dataset_id = df_meta.get("dataset_id")
     if not dataset_id:
         return html.Div("No dataset id found.", className="text-danger")
-    df = cache.get(dataset_id)
-    if df is None:
+
+    df_local = cache.get(dataset_id)
+    if df_local is None:
         return html.Div("Dataset not found in cache.", className="text-danger")
 
-    y_col = selected_y or ("average_playtime_forever" if "average_playtime_forever" in df.columns else None)
+    if selected_genres:
+        if isinstance(selected_genres, str):
+            selected_genres = [selected_genres]
+        if "main_genre" in df_local.columns:
+            df_local = df_local[df_local["main_genre"].isin(selected_genres)]
+        else:
+            return html.Div("No 'main_genre' column in dataset.", className="text-muted")
+
+    y_col = selected_y or (
+        "average_playtime_forever" if "average_playtime_forever" in df_local.columns else None
+    )
     if y_col is None:
         return html.Div("No Y-axis column selected or available.", className="text-muted")
 
     hide_zero = bool(hide_zero_value and "hide" in hide_zero_value)
-    fig = scatter_release_vs_fig(df, y_col, hide_zero=hide_zero, operator=operator, threshold=threshold)
+    fig = scatter_release_vs_fig(df_local, y_col, hide_zero=hide_zero, operator=operator, threshold=threshold)
+
     return dcc.Graph(figure=fig, config={"displayModeBar": True})
 
 # =========================
