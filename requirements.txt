@@ -1,7 +1,8 @@
+dash 
+dash-bootstrap-components
+Flask
+Flask-Caching
+Werkzeug
 pandas
-matplotlib.pyplot
-dash
-plotly.express
-
-
-
+numpy
+plotly
