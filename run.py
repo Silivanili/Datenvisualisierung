@@ -7,4 +7,4 @@ dash_app.layout = app_layout()
 import app.callbacks  
 
 if __name__ == "__main__":
-    dash_app.run(debug=True)
+    dash_app.run()
