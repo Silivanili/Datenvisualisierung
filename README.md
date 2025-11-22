@@ -27,6 +27,23 @@ You should see the navigation bar at the top and the sidebar on the left.
 
 ---
 
+## Download the data 
+
+This project can not include the datasets directly. Please download all four CSV files from Kaggle:
+
+**Dataset source:**
+[https://www.kaggle.com/datasets/artermiloff/steam-games-dataset](https://www.kaggle.com/datasets/artermiloff/steam-games-dataset)
+
+After downloading, place all CSV files into:
+
+```
+app/data/
+```
+
+The app expects the files to be in this folder in order to load and display them.
+
+---
+
 ## How to use it
 
 1. **Select a dataset**  
@@ -58,6 +75,3 @@ Datenvisualisierung/
 ├─ requirements.txt
 └─ README.md                
 ```
-
-The **data** folder (`app/data`) contains the CSV files referenced in the UI.
-
