@@ -2,6 +2,7 @@
 
 A small Dash app that lets you explore a **Steam games** dataset with a few interactive pages.  
 
+You can view the live dashboard at: [https://dashboard.silivanili.duckdns.org](https://dashboard.silivanili.duckdns.org)
 ---
 
 ## Installation
