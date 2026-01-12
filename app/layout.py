@@ -186,13 +186,6 @@ def sidebar():
                 switch=True,
                 className="mb-2",
             ),
-            dbc.Checklist(
-                options=[{"label": "Details on hover (not implemented)", "value": "details_hover"}],
-                value=[],
-                id="details-on-hover",
-                switch=True,
-                className="mb-3",
-            ),
 
             dbc.Label("Select metric for lineplot:", className="small text-muted"),
             dcc.Dropdown(
@@ -261,24 +254,34 @@ def sidebar():
 # Developer page 
 # -----------------------------------------------------------------
 def developer_page_layout():
- 
     return html.Div(
         [
             html.H4(
                 "Developer Page (Subset, for Timeline Graphic)",
                 className="fw-bold text-center mt-3 mb-4",
             ),
-            dbc.Row(
-                [
-                    dbc.Col(dcc.Loading(dcc.Graph(id="developer-plot1")), width=6),
-                    dbc.Col(dcc.Loading(dcc.Graph(id="developer-plot2")), width=6),
-                ],
-                className="mb-4",
+
+            dbc.Card(
+                dbc.CardBody(
+                    dbc.Row(
+                        [
+                            dbc.Col(dcc.Loading(dcc.Graph(id="developer-plot1")), width=6),
+                            dbc.Col(dcc.Loading(dcc.Graph(id="developer-plot2")), width=6),
+                        ]
+                    )
+                ),
+                className="mb-4 shadow-sm",
             ),
-            dbc.Row(
-                [
-                    dbc.Col(dcc.Loading(dcc.Graph(id="developer-plot3")), width=12),
-                ]
+
+            dbc.Card(
+                dbc.CardBody(
+                    dbc.Row(
+                        [
+                            dbc.Col(dcc.Loading(dcc.Graph(id="developer-plot3")), width=12),
+                        ]
+                    )
+                ),
+                className="mb-4 shadow-sm",
             ),
         ],
         style={"marginLeft": "20vw", "padding": "20px"},
@@ -286,52 +289,75 @@ def developer_page_layout():
 
 
 # -----------------------------------------------------------------
-# Page‑specific small layouts
+# Game page 
 # -----------------------------------------------------------------
 def game_page_layout():
-
     return html.Div(
         [
             html.H4(
                 "Game Page",
                 className="fw-bold text-center mt-3 mb-4",
             ),
-            dbc.Row(
-                [
-                    dbc.Col(dcc.Loading(dcc.Graph(id="game-plot1")), width=6),
-                    dbc.Col(dcc.Loading(dcc.Graph(id="game-plot2")), width=6),
-                ],
-                className="mb-4",
+
+            dbc.Card(
+                dbc.CardBody(
+                    dbc.Row(
+                        [
+                            dbc.Col(dcc.Loading(dcc.Graph(id="game-plot1")), width=6),
+                            dbc.Col(dcc.Loading(dcc.Graph(id="game-plot2")), width=6),
+                        ]
+                    )
+                ),
+                className="mb-4 shadow-sm",
             ),
-            dbc.Row(
-                [
-                    dbc.Col(dcc.Loading(dcc.Graph(id="game-plot3")), width=12),
-                ]
+
+            dbc.Card(
+                dbc.CardBody(
+                    dbc.Row(
+                        [
+                            dbc.Col(dcc.Loading(dcc.Graph(id="game-plot3")), width=12),
+                        ]
+                    )
+                ),
+                className="mb-4 shadow-sm",
             ),
         ],
         style={"marginLeft": "20vw", "padding": "20px"},
     )
 
 
+# -----------------------------------------------------------------
+# Genre page 
+# -----------------------------------------------------------------
 def genre_page_layout():
-
     return html.Div(
         [
             html.H4(
                 "Genre Page",
                 className="fw-bold text-center mt-3 mb-4",
             ),
-            dbc.Row(
-                [
-                    dbc.Col(dcc.Loading(dcc.Graph(id="genre-plot1")), width=6),
-                    dbc.Col(dcc.Loading(dcc.Graph(id="genre-plot2")), width=6),
-                ],
-                className="mb-4",
+
+            dbc.Card(
+                dbc.CardBody(
+                    dbc.Row(
+                        [
+                            dbc.Col(dcc.Loading(dcc.Graph(id="genre-plot1")), width=6),
+                            dbc.Col(dcc.Loading(dcc.Graph(id="genre-plot2")), width=6),
+                        ]
+                    )
+                ),
+                className="mb-4 shadow-sm",
             ),
-            dbc.Row(
-                [
-                    dbc.Col(dcc.Loading(dcc.Graph(id="genre-plot3")), width=12),
-                ]
+
+            dbc.Card(
+                dbc.CardBody(
+                    dbc.Row(
+                        [
+                            dbc.Col(dcc.Loading(dcc.Graph(id="genre-plot3")), width=12),
+                        ]
+                    )
+                ),
+                className="mb-4 shadow-sm",
             ),
         ],
         style={"marginLeft": "20vw", "padding": "20px"},
