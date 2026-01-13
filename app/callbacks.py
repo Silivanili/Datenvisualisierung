@@ -18,6 +18,8 @@ from app.plots import (
     histogram_fig_for_column,
     games_per_year_by_genre_fig_from_counts_df,
     violin_playtime_by_genre,
+    STEAM_COLORS, 
+    STEAM_COLORS_HIGH_CONTRAST
 )
 from app.layout import developer_page_layout, game_page_layout, genre_page_layout
 from app.utils import get_df_or_none, empty_fig
@@ -218,11 +220,13 @@ def display_page(pathname):
     Input("hide-zero-reviews", "value"),
     Input("y-filter-operator", "value"),
     Input("y-filter-value", "value"),
+    Input("swap-colorscheme", "value"),
 )
-def update_game_scatter(df_meta, scatter_y_input, scatter_x_input, hide_zero, operator, threshold):
+def update_game_scatter(df_meta, scatter_y_input, scatter_x_input, hide_zero, operator, threshold, swap_colorscheme):
     df = get_df_or_none(df_meta)
     if df is None:
         return empty_fig("No data loaded")
+    color_swap = "swap_colors" in swap_colorscheme
 
     hide_zero_bool = bool(hide_zero and "hide" in hide_zero)
     if not scatter_x_input or not scatter_y_input:
@@ -238,6 +242,7 @@ def update_game_scatter(df_meta, scatter_y_input, scatter_x_input, hide_zero, op
             threshold=threshold,
             selected_genres=None,
             color_by_genre=False,
+            color_swap=color_swap,
         )
         return fig
     except Exception:
@@ -250,15 +255,17 @@ def update_game_scatter(df_meta, scatter_y_input, scatter_x_input, hide_zero, op
     Input("df-store", "data"),
     Input("game-hist-select", "value"),
     Input("view-settings", "value"),
+    Input("swap-colorscheme", "value")
 )
-def update_game_histogram(df_meta, hist_col, view_settings):
+def update_game_histogram(df_meta, hist_col, view_settings, swap_colorscheme):
     df = get_df_or_none(df_meta)
     if df is None:
         return empty_fig("No data loaded")
 
     if not hist_col:
         return empty_fig("No column selected for game histogram")
-
+    
+    color_swap = "swap_colors" in swap_colorscheme
     swap_hist = ("swap_hist" in view_settings) if isinstance(view_settings, (list, tuple, set)) else (view_settings == "swap_hist")
 
     if swap_hist:
@@ -272,7 +279,7 @@ def update_game_histogram(df_meta, hist_col, view_settings):
         fig.update_layout(yaxis_title=hist_col, xaxis_title=None, showlegend=False)
         return fig
 
-    return histogram_fig_for_column(df, hist_col, bins=50)
+    return histogram_fig_for_column(df, hist_col, bins=50, color_swap=color_swap,)
 
 
 @app.callback(
@@ -417,8 +424,10 @@ def update_genre_mean(df_meta, selected_genres, genre_y_input):
     Input("genre-filter", "value"),
     Input("release-year-range", "value"),
     Input("year-metric-select", "value"),
+    Input("swap-colorscheme", "value"),
 )
-def update_genre_yearly(df_meta, selected_genres, year_range, metric):
+def update_genre_yearly(df_meta, selected_genres, year_range, metric, swap_colorscheme):
+    color_swap = "swap_colors" in swap_colorscheme
     df = get_df_or_none(df_meta)
     if df is None:
         return empty_fig("No data loaded")
@@ -446,7 +455,7 @@ def update_genre_yearly(df_meta, selected_genres, year_range, metric):
         if not json_counts:
             return empty_fig("No data for selected metric", "line")
         counts_df = pd.read_json(json_counts, orient="split")
-        return games_per_year_by_genre_fig_from_counts_df(counts_df, year_min, year_max, genres_order=genres_tuple)
+        return games_per_year_by_genre_fig_from_counts_df(counts_df, year_min, year_max, genres_order=genres_tuple, color_swap=color_swap,)
 
     if metric == "peak_ccu":
         json_ccu = compute_peak_ccu_by_year_json(df_meta.get("dataset_id"), genres_tuple, year_min, year_max)
@@ -463,7 +472,8 @@ def update_genre_yearly(df_meta, selected_genres, year_range, metric):
             pivot = pivot.reindex(columns=desired, fill_value=0)
         pivot = pivot.reindex(range(year_min, year_max + 1), fill_value=0)
         agg_df = pivot.reset_index().melt(id_vars="release_year", var_name="main_genre", value_name="peak_ccu_sum")
-        fig = px.line(agg_df, x="release_year", y="peak_ccu_sum", color="main_genre", markers=True, title="Peak CCU per Year by Genre")
+        palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
+        fig = px.line(agg_df, x="release_year", y="peak_ccu_sum", color="main_genre", markers=True, color_discrete_sequence=palette, title="Peak CCU per Year by Genre")
         return fig
 
     return empty_fig("Unknown metric", "line")
@@ -474,12 +484,14 @@ def update_genre_yearly(df_meta, selected_genres, year_range, metric):
     Input("df-store", "data"),
     Input("genre-filter", "value"),
     Input("genre-y-select", "value"),
+    Input("swap-colorscheme", "value"),
 )
-def update_genre_histogram(df_meta, selected_genres, genre_y_input):
+def update_genre_histogram(df_meta, selected_genres, genre_y_input, swap_colorscheme):
     df = get_df_or_none(df_meta)
     if df is None or not genre_y_input:
         return empty_fig("No data loaded")
-
+    
+    color_swap = "swap_colors" in swap_colorscheme
     if isinstance(selected_genres, str):
         selected_genres = [selected_genres]
     if selected_genres:
@@ -492,8 +504,8 @@ def update_genre_histogram(df_meta, selected_genres, genre_y_input):
         "median_playtime_2weeks",
     ]
     if genre_y_input in playtime_cols:
-        return violin_playtime_by_genre(df, genre_y_input, top_n=8)
-    return histogram_fig_for_column(df, genre_y_input, bins=50)
+        return violin_playtime_by_genre(df, genre_y_input, top_n=8, color_swap=color_swap,)
+    return histogram_fig_for_column(df, genre_y_input, bins=50, color_swap=color_swap)
 
 
 @app.callback(

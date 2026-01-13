@@ -11,8 +11,28 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+STEAM_COLORS = [
+    "#1b2838",  # dark navy
+    "#66c0f4",  # light blue
+    "#2a475e",  # medium blue
+    "#5c7e10",  # steam green
+    "#b7c3c7",  # light gray
+    "#4a6d8c",  # blue-gray
+    "#8cc63f",  # accent green
+]
 
-def games_per_year_by_genre_fig_from_counts_df(counts_df: Optional[pd.DataFrame], year_min: Optional[int] = None, year_max: Optional[int] = None, genres_order=None):
+# High contrast / color swap for visual impairment
+STEAM_COLORS_HIGH_CONTRAST = [
+    "#000000",  # black
+    "#ff0000",  # red
+    "#ffff00",  # yellow
+    "#00ff00",  # bright green
+    "#00ffff",  # cyan
+    "#ff00ff",  # magenta
+    "#ffffff",  # white
+]
+
+def games_per_year_by_genre_fig_from_counts_df(counts_df: Optional[pd.DataFrame], year_min: Optional[int] = None, year_max: Optional[int] = None, genres_order=None, color_swap: bool = False,):
     if counts_df is None or counts_df.empty:
         return empty_fig("No data for games per year by genre", kind="line")
     # ensure numeric year
@@ -36,26 +56,36 @@ def games_per_year_by_genre_fig_from_counts_df(counts_df: Optional[pd.DataFrame]
 
     df_melt = pivot.reset_index().melt(id_vars="release_year", var_name="main_genre", value_name="count")
 
-    fig = px.line(df_melt, x="release_year", y="count", color="main_genre", markers=True,
-                  title="Number of Games per Year by Genre")
+    palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
+
+    fig = px.line(
+        df_melt,
+        x="release_year",
+        y="count",
+        color="main_genre",
+        markers=True,
+        color_discrete_sequence=palette,
+        title="Number of Games per Year by Genre"
+    )
     fig.update_layout(xaxis_title="Release Year", yaxis_title="Number of Games")
     return fig
 
 
-def histogram_fig_for_column(df: pd.DataFrame, col: str, bins: int = 50, log_x: bool = False):
+def histogram_fig_for_column(df: pd.DataFrame, col: str, bins: int = 50, log_x: bool = False, color_swap=False):
+    palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
     if df is None or col not in df.columns:
         return empty_fig(f"Column '{col}' not found", kind="bar")
     series = pd.to_numeric(df[col], errors="coerce").dropna()
     if series.empty:
         return empty_fig(f"No numeric data in '{col}'", kind="bar")
-    fig = px.histogram(series, nbins=bins, title=f"Histogram of {col}")
+    fig = px.histogram(series, nbins=bins, color_discrete_sequence=palette, title=f"Histogram of {col}")
     if log_x:
         fig.update_xaxes(type="log")
     fig.update_layout(xaxis_title=col, yaxis_title="Count")
     return fig
 
 
-def violin_playtime_by_genre(df: pd.DataFrame, playtime_col: str, top_n: int = 10):
+def violin_playtime_by_genre(df: pd.DataFrame, playtime_col: str, top_n: int = 10, color_swap: bool = False):
     if df is None or playtime_col not in df.columns:
         return empty_fig("No data", kind="box")
     df_local = df.copy()
@@ -65,8 +95,18 @@ def violin_playtime_by_genre(df: pd.DataFrame, playtime_col: str, top_n: int = 1
         return empty_fig("No data after cleaning", kind="box")
     top_genres = df_local["main_genre"].value_counts().head(top_n).index.tolist()
     df_local = df_local[df_local["main_genre"].isin(top_genres)]
-    fig = px.violin(df_local, x="main_genre", y=playtime_col, box=True, points="outliers",
-                    title=f"{playtime_col} distribution by Genre (Top {top_n})")
+    palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
+
+    fig = px.violin(
+        df_local,
+        x="main_genre",
+        y=playtime_col,
+        box=True,
+        points="outliers",
+        color="main_genre",
+        color_discrete_sequence=palette,
+        title=f"{playtime_col} distribution by Genre (Top {top_n})"
+    )
     fig.update_layout(xaxis_title="Genre", yaxis_title=playtime_col)
     return fig
 
@@ -172,6 +212,7 @@ def scatter_release_vs_fig(
     selected_genres=None,
     max_points: int = MAX_SCATTER_POINTS,
     color_by_genre: bool = True,
+    color_swap: bool = False,  # NEW argument
 ):
     # validate x and y columns
     if df is None:
@@ -228,43 +269,30 @@ def scatter_release_vs_fig(
                 data = data.sample(max_points, random_state=1)
 
         # Build hover content and plot
+        palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
         if color_by_genre and "main_genre" in data.columns:
-            fig = go.Figure()
-            for genre, gdf in data.groupby("main_genre"):
-                customdata = [
-                    [
-                        row.get("name", ""),
-                        row.get("appid", ""),
-                        f"{int(row['low']):,} - {int(row['high']):,}" if pd.notna(row.get("low")) and pd.notna(row.get("high")) else "",
-                        row.get("release_year", ""),
-                    ]
-                    for _, row in gdf.iterrows()
-                ]
-                fig.add_trace(go.Scatter(
-                    x=gdf[x_col],
-                    y=gdf["y_mid"],
-                    mode="markers",
-                    name=str(genre),
-                    customdata=customdata,
-                    hovertemplate="Name: %{customdata[0]}<br>AppID: %{customdata[1]}<br>Owners range: %{customdata[2]}<br>Year: %{customdata[3]}<br>Owners mid: %{y:,}<extra></extra>",
-                    error_y=dict(
-                        type="data",
-                        array=(gdf["high"] - gdf["y_mid"]).abs().tolist(),
-                        arrayminus=(gdf["y_mid"] - gdf["low"]).abs().tolist(),
-                        visible=True,
-                    ),
-                    marker=dict(size=6),
-                ))
+            fig = px.scatter(
+                data,
+                x=x_col,
+                y=y_col,
+                color="main_genre",
+                color_discrete_sequence=palette,
+                hover_data=[c for c in ["name", "appid", "main_genre", "release_year"] if c in data.columns or c == "release_year"],
+                title=f"{y_col} vs {x_col}",
+            )
         else:
-            df_plot = data.copy()
-            fig = px.scatter(df_plot, x=x_col, y="y_mid", hover_data=[c for c in ["name", "appid", "release_year"] if c in df_plot.columns or c == "release_year"], title=f"estimated_owners midpoint vs {x_col}")
+            fig = px.scatter(
+                data,
+                x=x_col,
+                y=y_col,
+                hover_data=[c for c in ["name", "appid", "release_year"] if c in data.columns or c == "release_year"],
+                title=f"{y_col} vs {x_col}",
+            )
             fig.update_traces(showlegend=False)
 
-        fig.update_layout(
-            title=f"{y_col} (midpoint) vs {x_col}",
-            xaxis_title=x_col, yaxis_title="estimated_owners (midpoint)"
-        )
+        fig.update_layout(xaxis_title=x_col, yaxis_title=y_col)
         return fig
+
 
     # ----- Normal numeric branch -----
     data[y_col] = pd.to_numeric(data[y_col], errors="coerce")
@@ -303,8 +331,19 @@ def scatter_release_vs_fig(
     hover_cols = [c for c in ["name", "appid", "main_genre", "release_year"] if c in data.columns or c == "release_year"]
     if not color_by_genre and "main_genre" in hover_cols:
         hover_cols = [h for h in hover_cols if h != "main_genre"]
+    
+    palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
 
-    fig = px.scatter(data, x=x_col, y=y_col, color=color, hover_data=hover_cols, title=f"{y_col} vs {x_col}")
+    fig = px.scatter(
+    data,
+    x=x_col,
+    y=y_col,
+    color=color,
+    color_discrete_sequence=palette if color else None,
+    hover_data=hover_cols,
+    title=f"{y_col} vs {x_col}",
+    )
+
     if not color_by_genre:
         fig.update_traces(showlegend=False)
     fig.update_layout(xaxis_title=x_col, yaxis_title=y_col)

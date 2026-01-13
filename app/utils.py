@@ -25,15 +25,28 @@ def get_df_or_none(df_meta: Optional[dict]):
     return get_df_from_meta(df_meta)
 
 
-def empty_fig(msg: str = "No data", kind: str = "scatter"):
+import plotly.graph_objects as go
 
-    if kind == "line":
-        return px.line(title=msg)
-    if kind == "bar":
-        return px.bar(title=msg)
-    if kind == "box":
-        return px.box(title=msg)
-    return px.scatter(title=msg)
+def empty_fig(msg="No data"):
+    fig = go.Figure()
+    fig.add_annotation(
+        text=msg,
+        x=0.5,
+        y=0.5,
+        xref="paper",
+        yref="paper",
+        showarrow=False,
+        font=dict(size=16),
+    )
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False)
+    fig.update_layout(
+        template=None,
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    return fig
+
 
 
 def ensure_list(x: Any) -> List:
