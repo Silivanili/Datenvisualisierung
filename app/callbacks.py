@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
     Output("df-store", "data"),
     Input("load-dataset", "n_clicks"),
     State("dataset-path", "value"),
-    prevent_initial_call=True,
+    prevent_initial_call=False,
 )
 def on_load_dataset(n_clicks, path_or_url):
     if not path_or_url:
@@ -285,15 +285,30 @@ def update_game_histogram(df_meta, hist_col, view_settings, swap_colorscheme):
 @app.callback(
     Output("game-plot3", "figure"),
     Input("df-store", "data"),
+    Input("swap-colorscheme", "value"),
 )
-def update_game_top_tags(df_meta):
+
+def update_game_top_tags(df_meta, swap_colorscheme):
     df = get_df_or_none(df_meta)
     if df is None:
         return empty_fig("No data loaded")
+
     tags_df = top_tags_from_df(df, top_n=10)
     if tags_df.empty:
         return empty_fig("No tags found", "bar")
-    fig = px.bar(tags_df, x="tag", y="count", title="Top Tags")
+
+    color_swap = "swap_colors" in swap_colorscheme
+    palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
+
+    fig = px.bar(
+        tags_df,
+        x="tag",
+        y="count",
+        color="tag",                         
+        color_discrete_sequence=palette,
+        title="Top Tags",
+    )
+    fig.update_layout(showlegend=False)
     return fig
 
 
@@ -305,8 +320,11 @@ def update_game_top_tags(df_meta):
     Input("df-store", "data"),
     Input("genre-filter", "value"),
     Input("genre-y-select", "value"),
+    Input("swap-colorscheme", "value"),
 )
-def update_genre_mean(df_meta, selected_genres, genre_y_input):
+def update_genre_mean(df_meta, selected_genres, genre_y_input, swap_colorscheme):
+    color_swap = "swap_colors" in (swap_colorscheme or [])
+    palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
     df = get_df_or_none(df_meta)
     if df is None or genre_y_input is None:
         return empty_fig("No data loaded")
@@ -355,6 +373,7 @@ def update_genre_mean(df_meta, selected_genres, genre_y_input):
                     go.Bar(
                         x=agg["main_genre"].astype(str),
                         y=agg["estimated_owners_mid_mean"],
+                        marker_color=palette[:len(agg)],
                         error_y=dict(type="data", array=err_plus, arrayminus=err_minus, visible=True),
                         name="estimated_owners (mid mean)",
                     )
@@ -375,7 +394,7 @@ def update_genre_mean(df_meta, selected_genres, genre_y_input):
         )
         if agg.empty:
             return empty_fig("No data for the selected genre(s)", "bar")
-        fig = px.bar(agg, x="main_genre", y="_y_numeric", title=f"Mean {genre_y_input} by Genre (Top {len(agg)})")
+        fig = px.bar(agg, x="main_genre", y="_y_numeric", color="main_genre", color_discrete_sequence=palette, title=f"Mean {genre_y_input} by Genre (Top {len(agg)})")
         fig.update_layout(xaxis_tickangle=-45, showlegend=False)
         return fig
 
@@ -413,7 +432,7 @@ def update_genre_mean(df_meta, selected_genres, genre_y_input):
     if "main_genre" not in agg_df.columns:
         return empty_fig("No data for the selected genre(s)", "bar")
     ycol = [c for c in agg_df.columns if c != "main_genre"][0]
-    fig = px.bar(agg_df, x="main_genre", y=ycol, title=f"Mean {genre_y_input} by Genre (Top {len(agg_df)})")
+    fig = px.bar(agg_df, x="main_genre", y=ycol, color="main_genre", color_discrete_sequence=palette, title=f"Mean {genre_y_input} by Genre (Top {len(agg_df)})")
     fig.update_layout(xaxis_tickangle=-45, showlegend=False)
     return fig
 

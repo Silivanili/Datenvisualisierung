@@ -78,11 +78,21 @@ def sidebar():
                     {"label": "games_may2024_full.csv", "value": "games_may2024_full.csv"},
                     {"label": "games_may2024_cleaned.csv", "value": "games_may2024_cleaned.csv"},
                 ],
-                placeholder="Choose a dataset",
+                value="games_march2025_cleaned.csv",
                 clearable=False,
                 className="mb-2",
             ),
-            dbc.Button("Load Dataset", id="load-dataset", color="primary", size="sm", className="mb-3"),
+            html.Div(
+                dbc.Button(
+                    "Load Dataset",
+                    id="load-dataset",
+                    color="primary",
+                    size="sm",
+                    className="w-100",
+                ),
+                className="mb-3",
+            ),
+
 
             dbc.Label("Select Scatter X-Axis:", className="small text-muted"),
             dcc.Dropdown(
@@ -180,7 +190,7 @@ def sidebar():
             ),
 
             dbc.Checklist(
-                options=[{"label": "Swap Colorscheme (not implemented)", "value": "swap_colors"}],
+                options=[{"label": "Swap Colorscheme", "value": "swap_colors"}],
                 value=[],
                 id="swap-colorscheme",
                 switch=True,
