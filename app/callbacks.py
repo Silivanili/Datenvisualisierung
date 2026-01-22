@@ -1,6 +1,11 @@
 # app/callbacks.py
 import logging
+
 from dash import Input, Output, State, dcc, html
+import plotly.express as px
+import plotly.graph_objects as go  # <-- needed for the bar‑plot with error bars
+import pandas as pd
+
 from app import app
 from app.data.processing import (
     load_and_cache_dataset,
@@ -17,52 +22,51 @@ from app.plots import (
     scatter_release_vs_fig,
     histogram_fig_for_column,
     games_per_year_by_genre_fig_from_counts_df,
-    violin_playtime_by_genre,
-    STEAM_COLORS, 
-    STEAM_COLORS_HIGH_CONTRAST
+    STEAM_COLORS,
+    STEAM_COLORS_HIGH_CONTRAST,
 )
 from app.layout import developer_page_layout, game_page_layout, genre_page_layout
-from app.utils import get_df_or_none, empty_fig
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
+from app.utils import get_df_or_none, empty_fig, ensure_list
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
-# ---------------------------
+# ----------------------------------------------------------------------
+# Helper to build “options / value” tuples for a dropdown
+def _options_default(series, default=None):
+    opts = [{"label": c, "value": c} for c in series]
+    return opts, (default if default in series else (opts[0]["value"] if opts else None))
+
+
+# ----------------------------------------------------------------------
 # Upload / store callbacks
-# ---------------------------
 @app.callback(
     Output("df-store", "data"),
     Input("load-dataset", "n_clicks"),
     State("dataset-path", "value"),
     prevent_initial_call=False,
 )
-def on_load_dataset(n_clicks, path_or_url):
+def on_load_dataset(_, path_or_url):
     if not path_or_url:
         return None
     try:
-        meta = load_and_cache_dataset(path_or_url)
+        return load_and_cache_dataset(path_or_url)
     except Exception:
-        logger.exception("Failed to load dataset: %s", path_or_url)
+        log.exception("Failed to load dataset: %s", path_or_url)
         return None
-    return meta
 
 
-# ---------------------------
-# Populate controls callbacks
-# ---------------------------
+# ----------------------------------------------------------------------
+# Populate controls
 @app.callback(
     Output("scatter-y-select", "options"),
     Output("scatter-y-select", "value"),
     Input("df-store", "data"),
 )
-def populate_scatter_y_options(df_meta):
+def populate_scatter_y(df_meta):
     df = get_df_or_none(df_meta)
     if df is None:
         return [], None
-
     curated = [
         "price",
         "metacritic_score",
@@ -76,9 +80,8 @@ def populate_scatter_y_options(df_meta):
         "estimated_owners",
         "num_reviews_total",
     ]
-    options = [{"label": c, "value": c} for c in curated if c in df.columns]
-    default = options[0]["value"] if options else None
-    return options, default
+    cols = [c for c in curated if c in df.columns]
+    return _options_default(cols)
 
 
 @app.callback(
@@ -86,11 +89,10 @@ def populate_scatter_y_options(df_meta):
     Output("genre-y-select", "value"),
     Input("df-store", "data"),
 )
-def populate_genre_y_options(df_meta):
+def populate_genre_y(df_meta):
     df = get_df_or_none(df_meta)
     if df is None:
         return [], None
-
     candidates = [
         "average_playtime_forever",
         "median_playtime_forever",
@@ -98,9 +100,8 @@ def populate_genre_y_options(df_meta):
         "median_playtime_2weeks",
         "estimated_owners",
     ]
-    options = [{"label": c, "value": c} for c in candidates if c in df.columns]
-    default = options[0]["value"] if options else None
-    return options, default
+    cols = [c for c in candidates if c in df.columns]
+    return _options_default(cols)
 
 
 @app.callback(
@@ -112,11 +113,10 @@ def populate_genres(df_meta):
     df = get_df_or_none(df_meta)
     if df is None:
         return [], ["Action"]
-
     genres = genres_from_df(df)
-    options = [{"label": g, "value": g} for g in genres]
+    opts = [{"label": g, "value": g} for g in genres]
     default = ["Action"] if "Action" in genres else ([genres[0]] if genres else [])
-    return options, default
+    return opts, default
 
 
 @app.callback(
@@ -139,17 +139,16 @@ def populate_release_year(df_meta):
     if yrs.empty:
         return default_min, default_max, default_marks, default_value
 
-    min_year, max_year = int(yrs.min()), int(yrs.max())
-    span = max_year - min_year
+    min_y, max_y = int(yrs.min()), int(yrs.max())
+    span = max_y - min_y
     step = 1 if span <= 10 else (2 if span <= 40 else 5)
-    marks = {y: str(y) for y in range(min_year, max_year + 1, step)}
-    default_value = [max(min_year, max_year - 10), max_year]
-    return min_year, max_year, marks, default_value
+    marks = {y: str(y) for y in range(min_y, max_y + 1, step)}
+    default_value = [max(min_y, max_y - 10), max_y]
+    return min_y, max_y, marks, default_value
 
 
-# ---------------------------
+# ----------------------------------------------------------------------
 # Metadata panel
-# ---------------------------
 @app.callback(
     Output("dataset-size-text", "children"),
     Output("dataset-rows-text", "children"),
@@ -161,44 +160,34 @@ def update_dataset_meta(df_meta):
     if df is None:
         return "Size in Memory: ", "Games: ", "Top Tags: "
 
-    # memory footprint
-    mem_bytes = df.memory_usage(deep=True).sum()
-    mem_str = f"{mem_bytes / (1024 ** 2):.2f} MB"
-    rows_str = f"{len(df)}"
+    mem_mb = df.memory_usage(deep=True).sum() / (1024 ** 2)
+    rows = len(df)
 
-    # compute top tags: try 'tags', fall back to 'genres' or other candidate columns
-    tags_df = None
-    if "tags" in df.columns:
-        tags_df = top_tags_from_df(df, top_n=5, tags_col="tags")
-
-    if (tags_df is None or tags_df.empty) and "genres" in df.columns:
+    tags_df = top_tags_from_df(df, top_n=5, tags_col="tags")
+    if tags_df.empty and "genres" in df.columns:
         tags_df = top_tags_from_df(df, top_n=5, tags_col="genres")
-
-    if (tags_df is None or tags_df.empty):
-        candidate_cols = [c for c in df.columns if any(k in c.lower() for k in ("tag", "tags", "genre", "category", "top"))]
-        for c in candidate_cols:
-            if c in ("tags", "genres"):
-                continue
+    if tags_df.empty:
+        cand = [c for c in df.columns if any(k in c.lower() for k in ("tag", "genre", "category"))]
+        for c in cand:
             tags_df = top_tags_from_df(df, top_n=5, tags_col=c)
-            if tags_df is not None and not tags_df.empty:
+            if not tags_df.empty:
                 break
 
-    tags_str = "N/A" if (tags_df is None or tags_df.empty) else ", ".join(f"{row['tag']} ({row['count']})" for _, row in tags_df.iterrows())
-
+    tags_str = (
+        "N/A"
+        if tags_df.empty
+        else ", ".join(f"{r['tag']} ({r['count']})" for _, r in tags_df.iterrows())
+    )
     return (
-        f"Size in Memory: {mem_str}",
-        f"Games: {rows_str}",
+        f"Size in Memory: {mem_mb:.2f} MB",
+        f"Games: {rows}",
         f"Top Tags: {tags_str}",
     )
 
 
-# ---------------------------
-# Navigation callback
-# ---------------------------
-@app.callback(
-    Output("page-content", "children"),
-    Input("url", "pathname"),
-)
+# ----------------------------------------------------------------------
+# Navigation
+@app.callback(Output("page-content", "children"), Input("url", "pathname"))
 def display_page(pathname):
     if pathname == "/":
         return game_page_layout()
@@ -209,9 +198,8 @@ def display_page(pathname):
     return html.H1("404: Page not found", className="text-danger text-center mt-5")
 
 
-# ---------------------------
+# ----------------------------------------------------------------------
 # Game page callbacks
-# ---------------------------
 @app.callback(
     Output("game-plot1", "figure"),
     Input("df-store", "data"),
@@ -222,32 +210,25 @@ def display_page(pathname):
     Input("y-filter-value", "value"),
     Input("swap-colorscheme", "value"),
 )
-def update_game_scatter(df_meta, scatter_y_input, scatter_x_input, hide_zero, operator, threshold, swap_colorscheme):
+def update_game_scatter(df_meta, y, x, hide_zero, op, thr, swap):
     df = get_df_or_none(df_meta)
     if df is None:
         return empty_fig("No data loaded")
-    color_swap = "swap_colors" in swap_colorscheme
-
-    hide_zero_bool = bool(hide_zero and "hide" in hide_zero)
-    if not scatter_x_input or not scatter_y_input:
+    if not x or not y:
         return empty_fig("Select both X and Y variables for the scatter plot")
-
-    try:
-        fig = scatter_release_vs_fig(
-            df,
-            scatter_x_input,
-            scatter_y_input,
-            hide_zero=hide_zero_bool,
-            operator=operator,
-            threshold=threshold,
-            selected_genres=None,
-            color_by_genre=False,
-            color_swap=color_swap,
-        )
-        return fig
-    except Exception:
-        logger.exception("Failed to build game scatter for x=%s y=%s", scatter_x_input, scatter_y_input)
-        return empty_fig("Failed to build scatter")
+    color_swap = "swap_colors" in (swap or [])
+    hide = bool(hide_zero and "hide" in hide_zero)
+    return scatter_release_vs_fig(
+        df,
+        x,
+        y,
+        hide_zero=hide,
+        operator=op,
+        threshold=thr,
+        selected_genres=None,
+        color_by_genre=False,
+        color_swap=color_swap,
+    )
 
 
 @app.callback(
@@ -255,56 +236,43 @@ def update_game_scatter(df_meta, scatter_y_input, scatter_x_input, hide_zero, op
     Input("df-store", "data"),
     Input("game-hist-select", "value"),
     Input("view-settings", "value"),
-    Input("swap-colorscheme", "value")
-)
-def update_game_histogram(df_meta, hist_col, view_settings, swap_colorscheme):
-    df = get_df_or_none(df_meta)
-    if df is None:
-        return empty_fig("No data loaded")
-
-    if not hist_col:
-        return empty_fig("No column selected for game histogram")
-    
-    color_swap = "swap_colors" in swap_colorscheme
-    swap_hist = ("swap_hist" in view_settings) if isinstance(view_settings, (list, tuple, set)) else (view_settings == "swap_hist")
-
-    if swap_hist:
-        if hist_col not in df.columns:
-            return empty_fig(f"Column '{hist_col}' not found", "box")
-        col_ser = pd.to_numeric(df[hist_col], errors="coerce").dropna()
-        if col_ser.empty:
-            return empty_fig(f"No numeric data in '{hist_col}'", "box")
-        df_box = pd.DataFrame({hist_col: col_ser})
-        fig = px.box(df_box, y=hist_col, points="outliers", title=f"{hist_col} distribution (Box-plot)")
-        fig.update_layout(yaxis_title=hist_col, xaxis_title=None, showlegend=False)
-        return fig
-
-    return histogram_fig_for_column(df, hist_col, bins=50, color_swap=color_swap,)
-
-
-@app.callback(
-    Output("game-plot3", "figure"),
-    Input("df-store", "data"),
     Input("swap-colorscheme", "value"),
 )
-
-def update_game_top_tags(df_meta, swap_colorscheme):
+def update_game_histogram(df_meta, col, view_settings, swap):
     df = get_df_or_none(df_meta)
     if df is None:
         return empty_fig("No data loaded")
+    if not col:
+        return empty_fig("No column selected for game histogram")
+    swap_hist = "swap_hist" in (view_settings or [])
+    color_swap = "swap_colors" in (swap or [])
+    if swap_hist:
+        ser = pd.to_numeric(df[col], errors="coerce").dropna()
+        if ser.empty:
+            return empty_fig(f"No numeric data in '{col}'", "box")
+        return px.box(
+            pd.DataFrame({col: ser}),
+            y=col,
+            points="outliers",
+            title=f"{col} distribution (Box‑plot)",
+        ).update_layout(showlegend=False)
+    return histogram_fig_for_column(df, col, bins=50, color_swap=color_swap)
 
+
+@app.callback(Output("game-plot3", "figure"), Input("df-store", "data"), Input("swap-colorscheme", "value"))
+def update_game_top_tags(df_meta, swap):
+    df = get_df_or_none(df_meta)
+    if df is None:
+        return empty_fig("No data loaded")
     tags_df = top_tags_from_df(df, top_n=10)
     if tags_df.empty:
         return empty_fig("No tags found", "bar")
-
-    color_swap = "swap_colors" in swap_colorscheme
-    palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
-
+    palette = STEAM_COLORS_HIGH_CONTRAST if "swap_colors" in (swap or []) else STEAM_COLORS
     fig = px.bar(
         tags_df,
         x="tag",
         y="count",
-        color="tag",                         
+        color="tag",
         color_discrete_sequence=palette,
         title="Top Tags",
     )
@@ -312,9 +280,8 @@ def update_game_top_tags(df_meta, swap_colorscheme):
     return fig
 
 
-# ---------------------------
+# ----------------------------------------------------------------------
 # Genre page callbacks
-# ---------------------------
 @app.callback(
     Output("genre-plot1", "figure"),
     Input("df-store", "data"),
@@ -322,68 +289,56 @@ def update_game_top_tags(df_meta, swap_colorscheme):
     Input("genre-y-select", "value"),
     Input("swap-colorscheme", "value"),
 )
-def update_genre_mean(df_meta, selected_genres, genre_y_input, swap_colorscheme):
-    color_swap = "swap_colors" in (swap_colorscheme or [])
-    palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
+def update_genre_mean(df_meta, sel_genres, y_var, swap):
     df = get_df_or_none(df_meta)
-    if df is None or genre_y_input is None:
+    if df is None or y_var is None:
         return empty_fig("No data loaded")
-
-    if isinstance(selected_genres, str):
-        selected_genres = [selected_genres]
+    color_swap = "swap_colors" in (swap or [])
+    palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
 
     top_n = 10
-    genre_tuple = tuple(selected_genres) if selected_genres else None
-    json_res = compute_mean_by_genre_json(dataset_id=df_meta.get("dataset_id"), y_var=genre_y_input, top_n=top_n, selected_genres=genre_tuple)
+    sel = tuple(ensure_list(sel_genres))
+    json_res = compute_mean_by_genre_json(df_meta.get("dataset_id"), y_var, top_n, sel)
 
-    # cache miss handling (special-case estimated_owners)
+    # --------------------------------------------------------------
+    # No cached JSON – fall back to on‑the‑fly calculation
     if not json_res:
-        if genre_y_input == "estimated_owners":
-            if "estimated_owners" not in df.columns:
-                return empty_fig("No data for estimated_owners", "bar")
-
+        if y_var == "estimated_owners" and "estimated_owners" in df.columns:
             mid, low, high = estimated_owners_to_numeric_series(df["estimated_owners"])
-            df2 = df.assign(estimated_mid=mid, estimated_low=low, estimated_high=high)
-
             agg = (
-                df2.groupby("main_genre", observed=True)
+                df.assign(mid=mid, low=low, high=high)
+                .groupby("main_genre", observed=True)
                 .agg(
-                    estimated_owners_mid_mean=("estimated_mid", "mean"),
-                    estimated_owners_low_mean=("estimated_low", "mean"),
-                    estimated_owners_high_mean=("estimated_high", "mean"),
+                    estimated_owners_mid_mean=("mid", "mean"),
+                    estimated_owners_low_mean=("low", "mean"),
+                    estimated_owners_high_mean=("high", "mean"),
                 )
                 .dropna()
-                .sort_values(by="estimated_owners_mid_mean", ascending=False)
+                .sort_values("estimated_owners_mid_mean", ascending=False)
                 .head(top_n)
                 .reset_index()
             )
-
-            if agg.empty:
-                return empty_fig("No data for the selected genre(s)", "bar")
-
-            agg["estimated_owners_mid_mean"] = pd.to_numeric(agg["estimated_owners_mid_mean"], errors="coerce")
-            agg["estimated_owners_low_mean"] = pd.to_numeric(agg["estimated_owners_low_mean"], errors="coerce")
-            agg["estimated_owners_high_mean"] = pd.to_numeric(agg["estimated_owners_high_mean"], errors="coerce")
-
-            err_plus = (agg["estimated_owners_high_mean"] - agg["estimated_owners_mid_mean"]).fillna(0).clip(lower=0).tolist()
-            err_minus = (agg["estimated_owners_mid_mean"] - agg["estimated_owners_low_mean"]).fillna(0).clip(lower=0).tolist()
-
+            err_plus = (agg["estimated_owners_high_mean"] - agg["estimated_owners_mid_mean"]).clip(lower=0)
+            err_minus = (agg["estimated_owners_mid_mean"] - agg["estimated_owners_low_mean"]).clip(lower=0)
             fig = go.Figure(
                 data=[
                     go.Bar(
-                        x=agg["main_genre"].astype(str),
+                        x=agg["main_genre"],
                         y=agg["estimated_owners_mid_mean"],
-                        marker_color=palette[:len(agg)],
                         error_y=dict(type="data", array=err_plus, arrayminus=err_minus, visible=True),
-                        name="estimated_owners (mid mean)",
+                        marker_color=palette[: len(agg)],
                     )
                 ]
             )
-            fig.update_layout(title=f"Mean estimated_owners (mid) by Genre (Top {len(agg)})", xaxis_tickangle=-45, showlegend=False)
+            fig.update_layout(
+                title=f"Mean estimated_owners (mid) by Genre (Top {len(agg)})",
+                xaxis_tickangle=-45,
+                showlegend=False,
+            )
             return fig
 
-        # regular numeric column (no cache result)
-        df["_y_numeric"] = pd.to_numeric(df[genre_y_input], errors="coerce")
+        # generic numeric case
+        df["_y_numeric"] = pd.to_numeric(df[y_var], errors="coerce")
         agg = (
             df.groupby("main_genre")["_y_numeric"]
             .mean()
@@ -394,137 +349,123 @@ def update_genre_mean(df_meta, selected_genres, genre_y_input, swap_colorscheme)
         )
         if agg.empty:
             return empty_fig("No data for the selected genre(s)", "bar")
-        fig = px.bar(agg, x="main_genre", y="_y_numeric", color="main_genre", color_discrete_sequence=palette, title=f"Mean {genre_y_input} by Genre (Top {len(agg)})")
+        fig = px.bar(
+            agg,
+            x="main_genre",
+            y="_y_numeric",
+            color="main_genre",
+            color_discrete_sequence=palette,
+            title=f"Mean {y_var} by Genre (Top {len(agg)})",
+        )
         fig.update_layout(xaxis_tickangle=-45, showlegend=False)
         return fig
 
-    # cached path: parse JSON and render (handles estimated_owners or numeric)
-    try:
-        agg_df = pd.read_json(json_res, orient="split")
-    except Exception:
-        logger.exception("Failed to parse cached JSON for compute_mean_by_genre_json")
-        return empty_fig("Cache parse error", "bar")
-
+    # --------------------------------------------------------------
+    # Cached JSON path
+    agg_df = pd.read_json(json_res, orient="split")
     if agg_df.empty:
         return empty_fig("No data for the selected genre(s)", "bar")
 
     if "estimated_owners_mid_mean" in agg_df.columns:
-        agg_df["estimated_owners_mid_mean"] = pd.to_numeric(agg_df["estimated_owners_mid_mean"], errors="coerce")
-        agg_df["estimated_owners_low_mean"] = pd.to_numeric(agg_df.get("estimated_owners_low_mean", pd.Series([None] * len(agg_df))), errors="coerce")
-        agg_df["estimated_owners_high_mean"] = pd.to_numeric(agg_df.get("estimated_owners_high_mean", pd.Series([None] * len(agg_df))), errors="coerce")
-
-        err_plus = (agg_df["estimated_owners_high_mean"] - agg_df["estimated_owners_mid_mean"]).fillna(0).clip(lower=0).tolist()
-        err_minus = (agg_df["estimated_owners_mid_mean"] - agg_df["estimated_owners_low_mean"]).fillna(0).clip(lower=0).tolist()
-
+        err_plus = (agg_df["estimated_owners_high_mean"] - agg_df["estimated_owners_mid_mean"]).clip(lower=0)
+        err_minus = (agg_df["estimated_owners_mid_mean"] - agg_df["estimated_owners_low_mean"]).clip(lower=0)
         fig = go.Figure(
             data=[
                 go.Bar(
-                    x=agg_df["main_genre"].astype(str),
+                    x=agg_df["main_genre"],
                     y=agg_df["estimated_owners_mid_mean"],
                     error_y=dict(type="data", array=err_plus, arrayminus=err_minus, visible=True),
-                    name="estimated_owners (mid mean)",
+                    marker_color=palette[: len(agg_df)],
                 )
             ]
         )
-        fig.update_layout(title=f"Mean {genre_y_input} by Genre (Top {len(agg_df)})", xaxis_tickangle=-45, showlegend=False)
+        fig.update_layout(
+            title=f"Mean {y_var} by Genre (Top {len(agg_df)})",
+            xaxis_tickangle=-45,
+            showlegend=False,
+        )
         return fig
 
-    if "main_genre" not in agg_df.columns:
-        return empty_fig("No data for the selected genre(s)", "bar")
+    # simple numeric case from cache
     ycol = [c for c in agg_df.columns if c != "main_genre"][0]
-    fig = px.bar(agg_df, x="main_genre", y=ycol, color="main_genre", color_discrete_sequence=palette, title=f"Mean {genre_y_input} by Genre (Top {len(agg_df)})")
+    fig = px.bar(
+        agg_df,
+        x="main_genre",
+        y=ycol,
+        color="main_genre",
+        color_discrete_sequence=palette,
+        title=f"Mean {y_var} by Genre (Top {len(agg_df)})",
+    )
     fig.update_layout(xaxis_tickangle=-45, showlegend=False)
     return fig
-
-
-@app.callback(
-    Output("genre-plot2", "figure"),
-    Input("df-store", "data"),
-    Input("genre-filter", "value"),
-    Input("release-year-range", "value"),
-    Input("year-metric-select", "value"),
-    Input("swap-colorscheme", "value"),
-)
-def update_genre_yearly(df_meta, selected_genres, year_range, metric, swap_colorscheme):
-    color_swap = "swap_colors" in swap_colorscheme
-    df = get_df_or_none(df_meta)
-    if df is None:
-        return empty_fig("No data loaded")
-
-    if isinstance(selected_genres, str):
-        selected_genres = [selected_genres]
-
-    if selected_genres:
-        genres_tuple = tuple(selected_genres)
-    else:
-        if "main_genre" in df.columns:
-            genres_tuple = tuple(df["main_genre"].value_counts().head(6).index.tolist())
-        else:
-            genres_tuple = ()
-
-    year_min, year_max = None, None
-    if isinstance(year_range, (list, tuple)) and len(year_range) == 2:
-        try:
-            year_min = int(year_range[0]); year_max = int(year_range[1])
-        except Exception:
-            year_min, year_max = None, None
-
-    if metric == "count":
-        json_counts = compute_games_per_year_counts_json(df_meta.get("dataset_id"), genres_tuple, year_min, year_max)
-        if not json_counts:
-            return empty_fig("No data for selected metric", "line")
-        counts_df = pd.read_json(json_counts, orient="split")
-        return games_per_year_by_genre_fig_from_counts_df(counts_df, year_min, year_max, genres_order=genres_tuple, color_swap=color_swap,)
-
-    if metric == "peak_ccu":
-        json_ccu = compute_peak_ccu_by_year_json(df_meta.get("dataset_id"), genres_tuple, year_min, year_max)
-        if not json_ccu:
-            return empty_fig("No data for selected metric", "line")
-        ccu_df = pd.read_json(json_ccu, orient="split")
-        ccu_df["release_year"] = ccu_df["release_year"].astype(int)
-        year_min = year_min if year_min is not None else int(ccu_df["release_year"].min())
-        year_max = year_max if year_max is not None else int(ccu_df["release_year"].max())
-
-        pivot = ccu_df.pivot(index="release_year", columns="main_genre", values="peak_ccu_sum")
-        if genres_tuple:
-            desired = [g for g in genres_tuple if g in pivot.columns]
-            pivot = pivot.reindex(columns=desired, fill_value=0)
-        pivot = pivot.reindex(range(year_min, year_max + 1), fill_value=0)
-        agg_df = pivot.reset_index().melt(id_vars="release_year", var_name="main_genre", value_name="peak_ccu_sum")
-        palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
-        fig = px.line(agg_df, x="release_year", y="peak_ccu_sum", color="main_genre", markers=True, color_discrete_sequence=palette, title="Peak CCU per Year by Genre")
-        return fig
-
-    return empty_fig("Unknown metric", "line")
 
 
 @app.callback(
     Output("genre-plot3", "figure"),
     Input("df-store", "data"),
     Input("genre-filter", "value"),
-    Input("genre-y-select", "value"),
+    Input("release-year-range", "value"),
+    Input("year-metric-select", "value"),
     Input("swap-colorscheme", "value"),
 )
-def update_genre_histogram(df_meta, selected_genres, genre_y_input, swap_colorscheme):
+def update_genre_yearly(df_meta, sel_genres, yr_range, metric, swap):
     df = get_df_or_none(df_meta)
-    if df is None or not genre_y_input:
+    if df is None:
         return empty_fig("No data loaded")
-    
-    color_swap = "swap_colors" in swap_colorscheme
-    if isinstance(selected_genres, str):
-        selected_genres = [selected_genres]
-    if selected_genres:
-        df = df[df["main_genre"].isin(selected_genres)]
+    color_swap = "swap_colors" in (swap or [])
+    palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
 
-    playtime_cols = [
-        "average_playtime_forever",
-        "average_playtime_2weeks",
-        "median_playtime_forever",
-        "median_playtime_2weeks",
-    ]
-    if genre_y_input in playtime_cols:
-        return violin_playtime_by_genre(df, genre_y_input, top_n=8, color_swap=color_swap,)
-    return histogram_fig_for_column(df, genre_y_input, bins=50, color_swap=color_swap)
+    sel = tuple(ensure_list(sel_genres))
+    year_min, year_max = (yr_range or [None, None])
+
+    if metric == "count":
+        json_counts = compute_games_per_year_counts_json(
+            df_meta.get("dataset_id"), sel, year_min, year_max
+        )
+        if not json_counts:
+            return empty_fig("No data for selected metric", "line")
+        counts_df = pd.read_json(json_counts, orient="split")
+        return games_per_year_by_genre_fig_from_counts_df(
+            counts_df,
+            year_min,
+            year_max,
+            genres_order=sel,
+            color_swap=color_swap,
+        )
+
+    if metric == "peak_ccu":
+        json_ccu = compute_peak_ccu_by_year_json(
+            df_meta.get("dataset_id"), sel, year_min, year_max
+        )
+        if not json_ccu:
+            return empty_fig("No data for selected metric", "line")
+        ccu_df = pd.read_json(json_ccu, orient="split")
+        ccu_df["release_year"] = ccu_df["release_year"].astype(int)
+
+        yr_min = year_min if year_min is not None else int(ccu_df["release_year"].min())
+        yr_max = year_max if year_max is not None else int(ccu_df["release_year"].max())
+
+        pivot = ccu_df.pivot(index="release_year", columns="main_genre", values="peak_ccu_sum")
+        if sel:
+            desired = [g for g in sel if g in pivot.columns]
+            pivot = pivot.reindex(columns=desired, fill_value=0)
+        pivot = pivot.reindex(range(yr_min, yr_max + 1), fill_value=0)
+
+        melt = pivot.reset_index().melt(
+            id_vars="release_year", var_name="main_genre", value_name="peak_ccu_sum"
+        )
+        fig = px.line(
+            melt,
+            x="release_year",
+            y="peak_ccu_sum",
+            color="main_genre",
+            markers=True,
+            color_discrete_sequence=palette,
+            title="Peak CCU per Year by Genre",
+        )
+        return fig
+
+    return empty_fig("Unknown metric", "line")
 
 
 @app.callback(
@@ -536,20 +477,57 @@ def populate_game_hist_options(df_meta):
     df = get_df_or_none(df_meta)
     if df is None:
         return [], None
+    numeric = [
+        c
+        for c in df.columns
+        if pd.api.types.is_numeric_dtype(df[c])
+        or pd.to_numeric(df[c], errors="coerce").notna().any()
+    ]
+    opts = [{"label": c, "value": c} for c in numeric]
+    return opts, (numeric[0] if numeric else None)
 
-    num_cols = []
-    for c in df.columns:
-        try:
-            if pd.api.types.is_integer_dtype(df[c]) or pd.api.types.is_float_dtype(df[c]):
-                num_cols.append(c)
-        except Exception:
-            try:
-                coerced = pd.to_numeric(df[c], errors="coerce")
-                if coerced.dropna().shape[0] > 0:
-                    num_cols.append(c)
-            except Exception:
-                continue
 
-    options = [{"label": col, "value": col} for col in num_cols]
-    default = num_cols[0] if num_cols else None
-    return options, default
+@app.callback(
+    Output("genre-plot2", "figure"),
+    Input("df-store", "data"),
+    Input("genre-filter", "value"),
+    Input("swap-colorscheme", "value"),
+)
+def update_genre_scatter_bubble(df_meta, sel_genres, swap):
+    df = get_df_or_none(df_meta)
+    if df is None:
+        return empty_fig("No data loaded")
+    sel = ensure_list(sel_genres)
+    if sel:
+        df = df[df["main_genre"].isin(sel)]
+
+    required = {"price", "user_score", "average_playtime_forever", "main_genre"}
+    missing = required - set(df.columns)
+    if missing:
+        return empty_fig(f"Missing columns: {', '.join(missing)}")
+
+    agg = (
+        df.groupby("main_genre", observed=True)
+        .agg(
+            price_mean=("price", "mean"),
+            user_score_mean=("user_score", "mean"),
+            playtime_mean=("average_playtime_forever", "mean"),
+        )
+        .reset_index()
+    )
+    if agg.empty:
+        return empty_fig("No data after aggregation")
+
+    palette = STEAM_COLORS_HIGH_CONTRAST if "swap_colors" in (swap or []) else STEAM_COLORS
+    fig = px.scatter(
+        agg,
+        x="price_mean",
+        y="user_score_mean",
+        size="playtime_mean",
+        color="main_genre",
+        color_discrete_sequence=palette,
+        hover_data={"price_mean": ":.2f", "user_score_mean": ":.0f", "playtime_mean": ":.0f"},
+        title="Average Price vs. User Score (Bubble size = Avg Playtime) by Genre",
+    )
+    fig.update_layout(xaxis_title="Average Price", yaxis_title="Average User Score")
+    return fig

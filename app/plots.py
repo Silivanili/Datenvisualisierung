@@ -1,4 +1,3 @@
-# app/plots.py
 from typing import Optional
 import numpy as np
 import pandas as pd
@@ -7,78 +6,82 @@ import plotly.graph_objects as go
 from app.data.processing import estimated_owners_to_numeric_series
 from app.config import MAX_SCATTER_POINTS
 from app.utils import empty_fig
-import logging
-
-logger = logging.getLogger(__name__)
 
 STEAM_COLORS = [
-    "#1b2838",  # dark navy
-    "#66c0f4",  # light blue
-    "#2a475e",  # medium blue
-    "#5c7e10",  # steam green
-    "#b7c3c7",  # light gray
-    "#4a6d8c",  # blue-gray
-    "#8cc63f",  # accent green
+    "#1b2838",
+    "#66c0f4",
+    "#2a475e",
+    "#5c7e10",
+    "#b7c3c7",
+    "#4a6d8c",
+    "#8cc63f",
 ]
 
-# High contrast / color swap for visual impairment
 STEAM_COLORS_HIGH_CONTRAST = [
-    "#000000",  # black
-    "#ff0000",  # red
-    "#ffff00",  # yellow
-    "#00ff00",  # bright green
-    "#00ffff",  # cyan
-    "#ff00ff",  # magenta
-    "#ffffff",  # white
+    "#000000",
+    "#ff0000",
+    "#ffff00",
+    "#00ff00",
+    "#00ffff",
+    "#ff00ff",
+    "#ffffff",
 ]
 
-def games_per_year_by_genre_fig_from_counts_df(counts_df: Optional[pd.DataFrame], year_min: Optional[int] = None, year_max: Optional[int] = None, genres_order=None, color_swap: bool = False,):
+
+def _palette(swap: bool):
+    return STEAM_COLORS_HIGH_CONTRAST if swap else STEAM_COLORS
+
+
+def games_per_year_by_genre_fig_from_counts_df(
+    counts_df: Optional[pd.DataFrame],
+    year_min: Optional[int] = None,
+    year_max: Optional[int] = None,
+    genres_order=None,
+    color_swap: bool = False,
+):
     if counts_df is None or counts_df.empty:
         return empty_fig("No data for games per year by genre", kind="line")
-    # ensure numeric year
-    counts_df = counts_df.copy()
-    counts_df["release_year"] = pd.to_numeric(counts_df["release_year"], errors="coerce").astype("Int64")
-    if year_min is None:
-        year_min = int(counts_df["release_year"].min())
-    if year_max is None:
-        year_max = int(counts_df["release_year"].max())
 
-    counts_df["main_genre"] = counts_df["main_genre"].astype(str)
+    df = counts_df.copy()
+    df["release_year"] = pd.to_numeric(df["release_year"], errors="coerce").astype("Int64")
+    year_min = year_min or int(df["release_year"].min())
+    year_max = year_max or int(df["release_year"].max())
+    df["main_genre"] = df["main_genre"].astype(str)
 
-    pivot = counts_df.pivot(index="release_year", columns="main_genre", values="count")
-
+    pivot = df.pivot(index="release_year", columns="main_genre", values="count")
     if genres_order:
         desired = [str(g) for g in genres_order if str(g) in pivot.columns]
         if desired:
             pivot = pivot.reindex(columns=desired)
 
     pivot = pivot.reindex(range(year_min, year_max + 1), fill_value=0)
-
-    df_melt = pivot.reset_index().melt(id_vars="release_year", var_name="main_genre", value_name="count")
-
-    palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
+    melt = pivot.reset_index().melt(id_vars="release_year", var_name="main_genre", value_name="count")
 
     fig = px.line(
-        df_melt,
+        melt,
         x="release_year",
         y="count",
         color="main_genre",
         markers=True,
-        color_discrete_sequence=palette,
-        title="Number of Games per Year by Genre"
+        color_discrete_sequence=_palette(color_swap),
+        title="Number of Games per Year by Genre",
     )
     fig.update_layout(xaxis_title="Release Year", yaxis_title="Number of Games")
     return fig
 
 
 def histogram_fig_for_column(df: pd.DataFrame, col: str, bins: int = 50, log_x: bool = False, color_swap=False):
-    palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
     if df is None or col not in df.columns:
         return empty_fig(f"Column '{col}' not found", kind="bar")
     series = pd.to_numeric(df[col], errors="coerce").dropna()
     if series.empty:
         return empty_fig(f"No numeric data in '{col}'", kind="bar")
-    fig = px.histogram(series, nbins=bins, color_discrete_sequence=palette, title=f"Histogram of {col}")
+    fig = px.histogram(
+        series,
+        nbins=bins,
+        color_discrete_sequence=_palette(color_swap),
+        title=f"Histogram of {col}",
+    )
     if log_x:
         fig.update_xaxes(type="log")
     fig.update_layout(xaxis_title=col, yaxis_title="Count")
@@ -88,113 +91,64 @@ def histogram_fig_for_column(df: pd.DataFrame, col: str, bins: int = 50, log_x: 
 def violin_playtime_by_genre(df: pd.DataFrame, playtime_col: str, top_n: int = 10, color_swap: bool = False):
     if df is None or playtime_col not in df.columns:
         return empty_fig("No data", kind="box")
-    df_local = df.copy()
-    df_local[playtime_col] = pd.to_numeric(df_local[playtime_col], errors="coerce")
-    df_local = df_local.dropna(subset=[playtime_col, "main_genre"])
-    if df_local.empty:
+    local = df.copy()
+    local[playtime_col] = pd.to_numeric(local[playtime_col], errors="coerce")
+    local = local.dropna(subset=[playtime_col, "main_genre"])
+    if local.empty:
         return empty_fig("No data after cleaning", kind="box")
-    top_genres = df_local["main_genre"].value_counts().head(top_n).index.tolist()
-    df_local = df_local[df_local["main_genre"].isin(top_genres)]
-    palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
+    top = local["main_genre"].value_counts().head(top_n).index
+    local = local[local["main_genre"].isin(top)]
 
     fig = px.violin(
-        df_local,
+        local,
         x="main_genre",
         y=playtime_col,
         box=True,
         points="outliers",
         color="main_genre",
-        color_discrete_sequence=palette,
-        title=f"{playtime_col} distribution by Genre (Top {top_n})"
+        color_discrete_sequence=_palette(color_swap),
+        title=f"{playtime_col} distribution by Genre (Top {top_n})",
     )
     fig.update_layout(xaxis_title="Genre", yaxis_title=playtime_col)
     return fig
 
 
-# -------------------------
-# Stratified sampling (robust)
-# -------------------------
 def stratified_sample(df: pd.DataFrame, by: str, n: int, random_state: Optional[int] = 1) -> pd.DataFrame:
-    """
-    Stratified sampling that:
-    - computes proportions per group,
-    - takes floor(props * n) as base picks,
-    - distributes the remaining picks by largest fractional parts,
-    - clips picks to group sizes,
-    - samples deterministically using random_state.
-
-    Returns a DataFrame with up to n rows (fewer only if dataset smaller).
-    """
-    if n <= 0 or df is None or df.empty:
+    """Return up‑to *n* rows sampled proportionally per *by* group."""
+    if n <= 0 or df.empty:
         return df
 
     if by not in df.columns:
         return df.sample(min(len(df), n), random_state=random_state)
 
     sizes = df[by].value_counts(sort=False)
-    total = int(sizes.sum())
-    if total == 0:
-        return df.sample(min(len(df), n), random_state=random_state)
-
-    props = sizes / total
+    props = sizes / sizes.sum()
     exact = props * n
-
-    # base allocation: floor
     base = np.floor(exact).astype(int)
-
     remainder = int(n - base.sum())
-
-    if remainder > 0:
+    if remainder:
         fracs = exact - base
-        # select top fractional parts to add 1
         add_idx = fracs.sort_values(ascending=False).index[:remainder]
-        increments = pd.Series(0, index=base.index, dtype=int)
-        increments.loc[add_idx] = 1
-        picks = base + increments
-    else:
-        picks = base.copy()
+        base.loc[add_idx] += 1
+    picks = base.clip(upper=sizes).astype(int).loc[lambda s: s > 0]
 
-    # clip to group sizes (can't pick more than available)
-    picks = picks.clip(upper=sizes).astype(int)
-
-    # remove zero picks
-    picks = picks[picks > 0]
-
-    sampled_frames = []
-    for g, k in picks.items():
-        gdf = df.loc[df[by] == g]
-        k = min(len(gdf), int(k))
-        if k <= 0:
-            continue
-        sampled_frames.append(gdf.sample(k, random_state=random_state))
-
-    if not sampled_frames:
-        return df.sample(min(len(df), n), random_state=random_state)
-
-    result = pd.concat(sampled_frames, ignore_index=True)
-
-    # If we somehow overshot, downsample to n
-    if len(result) > n:
-        result = result.sample(n, random_state=random_state)
-
-    return result
+    frames = [
+        grp.sample(k, random_state=random_state)
+        for grp, k in zip([df[df[by] == g] for g in picks.index], picks)
+    ]
+    result = pd.concat(frames, ignore_index=True)
+    return result.sample(n, random_state=random_state) if len(result) > n else result
 
 
-# -------------------------
-# Scatter / plotting logic
-# -------------------------
-def _ensure_release_year_column(data: pd.DataFrame) -> pd.DataFrame:
-    """Ensure 'release_year' column exists (string-like) for hover/tooltips."""
+def _ensure_release_year(data: pd.DataFrame) -> pd.DataFrame:
+    """Guarantee a ``release_year`` column for hover info."""
     if "release_year" in data.columns:
         data["release_year"] = data["release_year"].astype(str).fillna("")
         return data
     if "release_date" in data.columns:
         try:
             yrs = pd.to_datetime(data["release_date"], errors="coerce").dt.year
-            if yrs.notna().any():
-                data["release_year"] = yrs.fillna("").astype("Int64").astype(object).where(yrs.notna(), "")
-            else:
-                data["release_year"] = data["release_date"].astype(str).fillna("")
+            data["release_year"] = yrs.fillna("").astype("Int64").astype(object).where(yrs.notna(), "")
         except Exception:
             data["release_year"] = data["release_date"].astype(str).fillna("")
         return data
@@ -212,138 +166,97 @@ def scatter_release_vs_fig(
     selected_genres=None,
     max_points: int = MAX_SCATTER_POINTS,
     color_by_genre: bool = True,
-    color_swap: bool = False,  # NEW argument
+    color_swap: bool = False,
 ):
-    # validate x and y columns
+    # basic validation
     if df is None:
         return empty_fig("No data for scatter")
-    if x_col not in df.columns:
-        return empty_fig(f"Column '{x_col}' not found")
-    if y_col not in df.columns:
-        return empty_fig(f"Column '{y_col}' not found")
+    if x_col not in df.columns or y_col not in df.columns:
+        return empty_fig(f"Column '{x_col}' or '{y_col}' not found")
 
     data = df.dropna(subset=[x_col, y_col]).copy()
-    data = _ensure_release_year_column(data)
+    data = _ensure_release_year(data)
 
-    # apply selected_genres filter only if provided
+    # genre filter
     if selected_genres:
-        if isinstance(selected_genres, str):
-            selected_genres = [selected_genres]
+        sel = ensure_list(selected_genres)
         if "main_genre" in data.columns:
-            data = data[data["main_genre"].isin(selected_genres)]
+            data = data[data["main_genre"].isin(sel)]
 
     if data.empty:
         return empty_fig("No data for selected axes")
 
-    # ----- estimated_owners special branch (y_col) -----
+    # special handling for ``estimated_owners``
     if y_col == "estimated_owners":
         mid, low, high = estimated_owners_to_numeric_series(data[y_col])
         data = data.assign(y_mid=mid, low=low, high=high).dropna(subset=["y_mid"])
         if hide_zero:
             data = data[data["y_mid"] != 0]
-
+        # filter by operator/threshold
         if operator and threshold is not None:
-            try:
-                thr = float(threshold)
-                if operator == "eq":
-                    data = data[data["y_mid"] == thr]
-                elif operator == "ge":
-                    data = data[data["y_mid"] >= thr]
-                elif operator == "le":
-                    data = data[data["y_mid"] <= thr]
-                elif operator == "gt":
-                    data = data[data["y_mid"] > thr]
-                elif operator == "lt":
-                    data = data[data["y_mid"] < thr]
-            except Exception:
-                logger.exception("Error applying operator filter on estimated_owners")
-
+            thr = float(threshold)
+            ops = {
+                "eq": data["y_mid"] == thr,
+                "ge": data["y_mid"] >= thr,
+                "le": data["y_mid"] <= thr,
+                "gt": data["y_mid"] > thr,
+                "lt": data["y_mid"] < thr,
+            }
+            data = data[ops.get(operator, slice(None))]
         if data.empty:
             return empty_fig("No points after filters")
-
-        # sampling
         if len(data) > max_points:
-            if "main_genre" in data.columns:
-                data = stratified_sample(data, "main_genre", max_points)
-            else:
-                data = data.sample(max_points, random_state=1)
+            data = stratified_sample(data, "main_genre", max_points) if "main_genre" in data.columns else data.sample(max_points, random_state=1)
 
-        # Build hover content and plot
-        palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
-        if color_by_genre and "main_genre" in data.columns:
-            fig = px.scatter(
-                data,
-                x=x_col,
-                y=y_col,
-                color="main_genre",
-                color_discrete_sequence=palette,
-                hover_data=[c for c in ["name", "appid", "main_genre", "release_year"] if c in data.columns or c == "release_year"],
-                title=f"{y_col} vs {x_col}",
-            )
-        else:
-            fig = px.scatter(
-                data,
-                x=x_col,
-                y=y_col,
-                hover_data=[c for c in ["name", "appid", "release_year"] if c in data.columns or c == "release_year"],
-                title=f"{y_col} vs {x_col}",
-            )
-            fig.update_traces(showlegend=False)
-
+        hover = ["name", "appid", "main_genre", "release_year"]
+        fig = px.scatter(
+            data,
+            x=x_col,
+            y=y_col,
+            color="main_genre" if color_by_genre and "main_genre" in data.columns else None,
+            color_discrete_sequence=_palette(color_swap),
+            hover_data=[c for c in hover if c in data.columns],
+            title=f"{y_col} vs {x_col}",
+        )
         fig.update_layout(xaxis_title=x_col, yaxis_title=y_col)
+        if not color_by_genre:
+            fig.update_traces(showlegend=False)
         return fig
 
-
-    # ----- Normal numeric branch -----
-    data[y_col] = pd.to_numeric(data[y_col], errors="coerce")
+    # regular numeric branch
     data[x_col] = pd.to_numeric(data[x_col], errors="coerce")
-    data = data.dropna(subset=[y_col, x_col])
+    data[y_col] = pd.to_numeric(data[y_col], errors="coerce")
+    data = data.dropna(subset=[x_col, y_col])
     if hide_zero:
         data = data[data[y_col] != 0]
 
     if operator and threshold is not None:
-        try:
-            thr = float(threshold)
-            if operator == "eq":
-                data = data[data[y_col] == thr]
-            elif operator == "ge":
-                data = data[data[y_col] >= thr]
-            elif operator == "le":
-                data = data[data[y_col] <= thr]
-            elif operator == "gt":
-                data = data[data[y_col] > thr]
-            elif operator == "lt":
-                data = data[data[y_col] < thr]
-        except Exception:
-            logger.exception("Error applying operator filter on numeric y_col")
+        thr = float(threshold)
+        ops = {
+            "eq": data[y_col] == thr,
+            "ge": data[y_col] >= thr,
+            "le": data[y_col] <= thr,
+            "gt": data[y_col] > thr,
+            "lt": data[y_col] < thr,
+        }
+        data = data[ops.get(operator, slice(None))]
 
     if data.empty:
         return empty_fig("No points after filters")
-
     if len(data) > max_points:
-        if "main_genre" in data.columns:
-            data = stratified_sample(data, "main_genre", max_points)
-        else:
-            data = data.sample(max_points, random_state=1)
+        data = stratified_sample(data, "main_genre", max_points) if "main_genre" in data.columns else data.sample(max_points, random_state=1)
 
     color = "main_genre" if (color_by_genre and "main_genre" in data.columns) else None
-
-    hover_cols = [c for c in ["name", "appid", "main_genre", "release_year"] if c in data.columns or c == "release_year"]
-    if not color_by_genre and "main_genre" in hover_cols:
-        hover_cols = [h for h in hover_cols if h != "main_genre"]
-    
-    palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
-
+    hover = ["name", "appid", "main_genre", "release_year"]
     fig = px.scatter(
-    data,
-    x=x_col,
-    y=y_col,
-    color=color,
-    color_discrete_sequence=palette if color else None,
-    hover_data=hover_cols,
-    title=f"{y_col} vs {x_col}",
+        data,
+        x=x_col,
+        y=y_col,
+        color=color,
+        color_discrete_sequence=_palette(color_swap) if color else None,
+        hover_data=[c for c in hover if c in data.columns],
+        title=f"{y_col} vs {x_col}",
     )
-
     if not color_by_genre:
         fig.update_traces(showlegend=False)
     fig.update_layout(xaxis_title=x_col, yaxis_title=y_col)

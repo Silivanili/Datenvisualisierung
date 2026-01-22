@@ -1,33 +1,22 @@
-# app/utils.py
-
 from functools import wraps
-from typing import Any, Callable, Iterable, List, Optional, Tuple
+from typing import Any, Callable, List, Optional
 import logging
-import plotly.express as px
+import plotly.graph_objects as go
 from app.data.processing import get_dataset
 
-logger = logging.getLogger(__name__)
-
-
-def get_df_from_meta(df_meta: Optional[dict]) -> Optional[object]:
-
-    if not df_meta:
-        return None
-    dataset_id = df_meta.get("dataset_id")
-    return get_dataset(dataset_id) if dataset_id else None
+log = logging.getLogger(__name__)
 
 
 def get_df_or_none(df_meta: Optional[dict]):
-    """
-    Centralized helper used by callbacks:
-    given the dict from dcc.Store, return the cached DataFrame or None.
-    """
-    return get_df_from_meta(df_meta)
+    """Return the cached DataFrame or ``None``."""
+    if not df_meta:
+        return None
+    ds_id = df_meta.get("dataset_id")
+    return get_dataset(ds_id) if ds_id else None
 
-
-import plotly.graph_objects as go
 
 def empty_fig(msg="No data"):
+    """Create a minimal Plotly figure with a centred annotation."""
     fig = go.Figure()
     fig.add_annotation(
         text=msg,
@@ -48,15 +37,8 @@ def empty_fig(msg="No data"):
     return fig
 
 
-
 def ensure_list(x: Any) -> List:
-    """
-    Return a list for common inputs:
-      - None -> []
-      - str -> [str]
-      - iterable -> list(iterable)
-      - otherwise -> [x]
-    """
+    """Coerce *x* to a list – ``None`` → ``[]``, ``str`` → ``[str]``."""
     if x is None:
         return []
     if isinstance(x, str):
@@ -69,9 +51,9 @@ def ensure_list(x: Any) -> List:
 
 def ensure_df(empty_return=None):
     """
-    Decorator that expects the wrapped function to accept a DataFrame as first arg.
-    The decorator will accept df_meta (dict with 'dataset_id') instead, fetch the DataFrame,
-    and call the wrapped function with the DataFrame. If dataset is missing, returns empty_return.
+    Decorator for callbacks that receive ``df_meta``.
+    The wrapped function receives the actual DataFrame; if missing,
+    ``empty_return`` is returned immediately.
     """
     def decorator(func: Callable):
         @wraps(func)
@@ -80,5 +62,7 @@ def ensure_df(empty_return=None):
             if df is None:
                 return empty_return
             return func(df, *args, **kwargs)
+
         return wrapper
+
     return decorator
