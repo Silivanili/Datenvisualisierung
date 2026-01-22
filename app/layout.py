@@ -197,6 +197,29 @@ def sidebar():
                 className="mb-2",
             ),
 
+            dbc.Label(
+                "Bubble‑plot Y‑axis:",
+                className="small text-muted",
+            ),
+            dcc.Dropdown(
+                id="genre-bubble-y-select",
+                # Fixed options – the callback will use the column name directly
+                options=[
+                    {"label": "Average user score", "value": "user_score"},
+                    {"label": "Positive reviews", "value": "positive"},
+                    {"label": "Negative reviews", "value": "negative"},
+                    {"label": "Metacritic score", "value": "metacritic_score"},
+                    {"label": "Recommendations",           "value": "recommendations"},
+                    {"label": "% positive (total)",        "value": "pct_pos_total"},
+
+
+                ],
+                # Show user_score by default (matches the original plot)
+                value="user_score",
+                clearable=False,
+                className="mb-3",
+            ),
+
             dbc.Label("Select metric for lineplot:", className="small text-muted"),
             dcc.Dropdown(
                 id="year-metric-select",

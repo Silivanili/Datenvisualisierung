@@ -491,17 +491,21 @@ def populate_game_hist_options(df_meta):
     Output("genre-plot2", "figure"),
     Input("df-store", "data"),
     Input("genre-filter", "value"),
+    Input("genre-bubble-y-select", "value"),          
     Input("swap-colorscheme", "value"),
 )
-def update_genre_scatter_bubble(df_meta, sel_genres, swap):
+
+def update_genre_scatter_bubble(df_meta, sel_genres, y_metric, swap):
+
     df = get_df_or_none(df_meta)
     if df is None:
         return empty_fig("No data loaded")
+
     sel = ensure_list(sel_genres)
     if sel:
         df = df[df["main_genre"].isin(sel)]
 
-    required = {"price", "user_score", "average_playtime_forever", "main_genre"}
+    required = {"price", "average_playtime_forever", "main_genre", y_metric}
     missing = required - set(df.columns)
     if missing:
         return empty_fig(f"Missing columns: {', '.join(missing)}")
@@ -510,24 +514,47 @@ def update_genre_scatter_bubble(df_meta, sel_genres, swap):
         df.groupby("main_genre", observed=True)
         .agg(
             price_mean=("price", "mean"),
-            user_score_mean=("user_score", "mean"),
             playtime_mean=("average_playtime_forever", "mean"),
+            y_mean=(y_metric, "mean"),         
         )
         .reset_index()
     )
     if agg.empty:
         return empty_fig("No data after aggregation")
 
-    palette = STEAM_COLORS_HIGH_CONTRAST if "swap_colors" in (swap or []) else STEAM_COLORS
+    palette = (
+        STEAM_COLORS_HIGH_CONTRAST
+        if "swap_colors" in (swap or [])
+        else STEAM_COLORS
+    )
+    y_labels = {
+        "user_score": "Average user score",
+        "positive": "Average positive reviews",
+        "negative": "Average negative reviews",
+        "metacritic_score": "Average Metacritic score",
+    }
+    y_label = y_labels.get(y_metric, y_metric)
+
     fig = px.scatter(
         agg,
         x="price_mean",
-        y="user_score_mean",
+        y="y_mean",
         size="playtime_mean",
         color="main_genre",
         color_discrete_sequence=palette,
-        hover_data={"price_mean": ":.2f", "user_score_mean": ":.0f", "playtime_mean": ":.0f"},
-        title="Average Price vs. User Score (Bubble size = Avg Playtime) by Genre",
+        hover_data={
+            "price_mean": ":.2f",
+            "y_mean": ":.0f",
+            "playtime_mean": ":.0f",
+            "main_genre": True,
+        },
+        title=(
+            f"Average Price vs. {y_label} "
+            "(Bubble size = Avg Playtime) by Genre"
+        ),
     )
-    fig.update_layout(xaxis_title="Average Price", yaxis_title="Average User Score")
+    fig.update_layout(
+        xaxis_title="Average Price",
+        yaxis_title=y_label,
+    )
     return fig
