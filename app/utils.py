@@ -1,22 +1,26 @@
-from functools import wraps
+# \Datenvisualisierung\app\utils.py
+from functools import wraps, lru_cache
 from typing import Any, Callable, List, Optional
 import logging
 import plotly.graph_objects as go
 from app.data.processing import get_dataset
+import io
+import pandas as pd
 
 log = logging.getLogger(__name__)
 
+def json_str_to_df(json_str: str, orient: str = "split") -> pd.DataFrame:
+    if not json_str:
+        return pd.DataFrame()
+    return pd.read_json(io.StringIO(json_str), orient=orient)
 
 def get_df_or_none(df_meta: Optional[dict]):
-    """Return the cached DataFrame or ``None``."""
     if not df_meta:
         return None
     ds_id = df_meta.get("dataset_id")
     return get_dataset(ds_id) if ds_id else None
 
-
 def empty_fig(msg="No data"):
-    """Create a minimal Plotly figure with a centred annotation."""
     fig = go.Figure()
     fig.add_annotation(
         text=msg,
@@ -36,9 +40,7 @@ def empty_fig(msg="No data"):
     )
     return fig
 
-
 def ensure_list(x: Any) -> List:
-    """Coerce *x* to a list – ``None`` → ``[]``, ``str`` → ``[str]``."""
     if x is None:
         return []
     if isinstance(x, str):
@@ -48,13 +50,7 @@ def ensure_list(x: Any) -> List:
     except TypeError:
         return [x]
 
-
 def ensure_df(empty_return=None):
-    """
-    Decorator for callbacks that receive ``df_meta``.
-    The wrapped function receives the actual DataFrame; if missing,
-    ``empty_return`` is returned immediately.
-    """
     def decorator(func: Callable):
         @wraps(func)
         def wrapper(df_meta, *args, **kwargs):
@@ -62,7 +58,5 @@ def ensure_df(empty_return=None):
             if df is None:
                 return empty_return
             return func(df, *args, **kwargs)
-
         return wrapper
-
     return decorator
