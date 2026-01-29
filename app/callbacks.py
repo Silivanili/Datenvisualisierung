@@ -54,14 +54,52 @@ def on_load_dataset(_, path_or_url):
         return None
 
 @app.callback(
+    Output("scatter-x-select", "options"),
+    Output("scatter-x-select", "value"),
     Output("scatter-y-select", "options"),
     Output("scatter-y-select", "value"),
     Input("df-store", "data"),
 )
 def populate_scatter_y(df_meta):
     if not df_meta:
-        return [], None
-    return df_meta.get("scatter_y_opts", []), df_meta.get("scatter_y_default")
+        return [], "release_date", [], "pct_pos_total"  # Default to release_date and pct_pos_total
+
+    df = get_dataset(df_meta["dataset_id"])
+    if df is None:
+        return [], "release_date", [], "pct_pos_total"  # Default fallback
+
+    # Define all column options dynamically with units/labels
+    column_units = {
+        "appid": "Identifier",
+        "name": "String",
+        "required_age": "Integer",
+        "dlc_count": "Integer",
+        "recommendations": "Integer",
+        "publishers": "String",
+        "num_reviews_total": "Number of reviews (total)",
+        "num_reviews_recent": "Number of reviews (recent)",
+        "main_genre": "String",
+        "release_year": "Integer",
+        "price": "USD",
+        "tags": "List of Strings",
+        "peak_ccu": "Peak Concurrent Users (Integer)",
+        "metacritic_score": "Integer Score (0-100)",
+        "user_score": "Integer Score (0-100)",
+        "positive": "Positive Reviews (Integer)",
+        "negative": "Negative Reviews (Integer)",
+        "pct_pos_total": "Percentage positive reviews (total)",
+        "pct_pos_recent":"Percentage positive reviews (recent)",
+        "average_playtime_forever": "Minutes",
+        "median_playtime_forever": "Minutes",
+        "average_playtime_2weeks": "Minutes",
+        "median_playtime_2weeks": "Minutes",
+        "release_date": "Datetime",
+
+    }
+    options = [{"label": f"{col} ({column_units.get(col, 'Units')})", "value": col} for col in df.columns]
+
+    # Default to release_date and pct_pos_total
+    return options, "release_date", options, "pct_pos_total"
 
 @app.callback(
     Output("genre-y-select", "options"),
@@ -364,17 +402,12 @@ def update_genre_yearly(df_meta, sel_genres, yr_range, metric, swap):
 )
 def populate_game_hist_options(df_meta):
     if not df_meta:
-        return [], None
+        return [], "release_date"  # Default to release_date
     df = get_dataset(df_meta["dataset_id"])
     if df is None:
-        return [], None
-    numeric = [
-        c
-        for c in df.columns
-        if pd.api.types.is_numeric_dtype(df[c]) or pd.to_numeric(df[c], errors="coerce").notna().any()
-    ]
-    opts = [{"label": c, "value": c} for c in numeric]
-    return opts, (numeric[0] if numeric else None)
+        return [], "release_date"  # Default fallback
+    options = [{"label": c, "value": c} for c in df.columns]
+    return options, "release_date"
 
 @app.callback(
     Output("genre-plot2", "figure"),

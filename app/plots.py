@@ -60,21 +60,36 @@ def games_per_year_by_genre_fig_from_counts_df(
     fig.update_layout(xaxis_title="Release Year", yaxis_title="Number of Games")
     return fig
 
+
 def histogram_fig_for_column(df: pd.DataFrame, col: str, bins: int = 50, log_x: bool = False, color_swap=False):
     if df is None or col not in df.columns:
         return empty_fig(f"Column '{col}' not found")
+
+    # Convert release_date column to datetime format if applicable
+    if col == "release_date":
+        df = df.copy()  # Avoid modifying original dataframe
+        df[col] = pd.to_datetime(df[col], errors="coerce")
+        df = df.dropna(subset=[col])  # Remove invalid dates
+
     series = pd.to_numeric(df[col], errors="coerce").dropna()
     if series.empty:
         return empty_fig(f"No numeric data in '{col}'")
+
+    title = "New Releases on Steam over Time" if col == "release_date" else f"Histogram of {col}"
     fig = px.histogram(
-        series,
+        df,
+        x=col,
         nbins=bins,
         color_discrete_sequence=STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS,
-        title=f"Histogram of {col}",
+        title=title,
     )
+
     if log_x:
         fig.update_xaxes(type="log")
-    fig.update_layout(xaxis_title=col, yaxis_title="Count")
+    elif col == "release_date":
+        fig.update_xaxes(title="Release Date")  # Update x-axis title for release_date specifically
+
+    fig.update_layout(yaxis_title="Count")
     return fig
 
 def violin_playtime_by_genre(df: pd.DataFrame, playtime_col: str, top_n: int = 10, color_swap: bool = False):
@@ -136,6 +151,7 @@ def _ensure_release_year(data: pd.DataFrame) -> pd.DataFrame:
     data["release_year"] = ""
     return data
 
+
 def scatter_release_vs_fig(
     df: pd.DataFrame,
     x_col: str,
@@ -148,82 +164,66 @@ def scatter_release_vs_fig(
     color_by_genre: bool = True,
     color_swap: bool = False,
 ):
-    if df is None:
-        return empty_fig("No data for scatter")
-    if x_col not in df.columns or y_col not in df.columns:
-        return empty_fig(f"Column '{x_col}' or '{y_col}' not found")
+    # Define units for recognized columns
+    column_units = {
+        "price": "USD",
+        "metacritic_score": "Score (0-100)",
+        "user_score": "Score",
+        "positive": "Count",
+        "negative": "Count",
+        "pct_pos_total": "Percentage (%)",
+        "average_playtime_forever": "Minutes",
+        "median_playtime_forever": "Minutes",
+        "release_date": "Release Date",
+    }
+
+    x_label = f"{x_col} ({column_units.get(x_col, x_col)})"
+    y_label = f"{y_col} ({column_units.get(y_col, y_col)})"
+
+    # Handle release_date as a datetime column
+    if x_col == "release_date":
+        df = df.copy()
+        df[x_col] = pd.to_datetime(df[x_col], errors="coerce")  # Ensure proper datetime format
+        df = df.dropna(subset=[x_col])  # Remove rows with invalid datetime values
+
+    # Default filtering
     data = df.dropna(subset=[x_col, y_col])
-    data = _ensure_release_year(data)
-    if selected_genres:
-        sel = ensure_list(selected_genres)
-        if "main_genre" in data.columns:
-            data = data[data["main_genre"].isin(sel)]
-    if data.empty:
-        return empty_fig("No data for selected axes")
-    if y_col == "estimated_owners":
-        mid, low, high = estimated_owners_to_numeric_series(data[y_col])
-        data = data.assign(y_mid=mid, low=low, high=high).dropna(subset=["y_mid"])
-        if hide_zero:
-            data = data[data["y_mid"] != 0]
-        if operator and threshold is not None:
-            thr = float(threshold)
-            ops = {
-                "eq": data["y_mid"] == thr,
-                "ge": data["y_mid"] >= thr,
-                "le": data["y_mid"] <= thr,
-                "gt": data["y_mid"] > thr,
-                "lt": data["y_mid"] < thr,
-            }
-            data = data[ops.get(operator, slice(None))]
-        if data.empty:
-            return empty_fig("No points after filters")
-        if len(data) > max_points:
-            data = stratified_sample(data, "main_genre", max_points) if "main_genre" in data.columns else data.sample(max_points, random_state=1)
-        hover = ["name", "appid", "main_genre", "release_year"]
-        fig = px.scatter(
-            data,
-            x=x_col,
-            y=y_col,
-            color="main_genre" if color_by_genre and "main_genre" in data.columns else None,
-            color_discrete_sequence=STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS,
-            hover_data=[c for c in hover if c in data.columns],
-            title=f"{y_col} vs {x_col}",
-        )
-        fig.update_layout(xaxis_title=x_col, yaxis_title=y_col)
-        if not color_by_genre:
-            fig.update_traces(showlegend=False)
-        return fig
-    data[x_col] = pd.to_numeric(data[x_col], errors="coerce")
-    data[y_col] = pd.to_numeric(data[y_col], errors="coerce")
-    data = data.dropna(subset=[x_col, y_col])
     if hide_zero:
         data = data[data[y_col] != 0]
+
+    # Apply operator filtering if threshold is provided
     if operator and threshold is not None:
         thr = float(threshold)
-        ops = {
+        op_map = {
             "eq": data[y_col] == thr,
             "ge": data[y_col] >= thr,
             "le": data[y_col] <= thr,
             "gt": data[y_col] > thr,
             "lt": data[y_col] < thr,
         }
-        data = data[ops.get(operator, slice(None))]
-    if data.empty:
-        return empty_fig("No points after filters")
+        data = data[op_map.get(operator, slice(None))]
+
+    # Apply sampling for large datasets
     if len(data) > max_points:
-        data = stratified_sample(data, "main_genre", max_points) if "main_genre" in data.columns else data.sample(max_points, random_state=1)
-    color = "main_genre" if (color_by_genre and "main_genre" in data.columns) else None
-    hover = ["name", "appid", "main_genre", "release_year"]
+        data = data.sample(n=max_points, random_state=42)
+
+    if data.empty:
+        return empty_fig("No data available for the selected axes")
+
+    # Generate the scatter plot
     fig = px.scatter(
         data,
         x=x_col,
         y=y_col,
-        color=color,
-        color_discrete_sequence=STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS if color else None,
-        hover_data=[c for c in hover if c in data.columns],
+        color="main_genre" if color_by_genre and "main_genre" in data.columns else None,
+        opacity=0.6,  # Reduce opacity for readability
+        hover_data=["name", "appid"] if "appid" in data.columns else None,
         title=f"{y_col} vs {x_col}",
     )
-    if not color_by_genre:
-        fig.update_traces(showlegend=False)
-    fig.update_layout(xaxis_title=x_col, yaxis_title=y_col)
+    fig.update_layout(xaxis_title=x_label, yaxis_title=y_label)
+
+    # Explicitly set the x-axis type as datetime for release_date
+    if x_col == "release_date":
+        fig.update_xaxes(type="date")  # Ensure proper datetime handling for x-axis
+
     return fig

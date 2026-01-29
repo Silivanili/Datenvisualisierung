@@ -93,27 +93,21 @@ def sidebar():
                 className="mb-3",
             ),
 
-
             dbc.Label("Select Scatter X-Axis:", className="small text-muted"),
             dcc.Dropdown(
                 id="scatter-x-select",
                 options=[
-                    {"label": c, "value": c} for c in [
-                        "price",
-                        "metacritic_score",
-                        "user_score",
-                        "positive",
-                        "negative",
-                        "pct_pos_total",
-                        "average_playtime_forever",
-                        "median_playtime_forever",
-                        "peak_ccu",
-                        "average_playtime_2weeks",
-                        "median_playtime_2weeks",
-                        "num_reviews_total"
-                    ]
+                    {"label": "Price (USD)", "value": "price"},
+                    {"label": "Metacritic Score (0-100)", "value": "metacritic_score"},
+                    {"label": "User Score", "value": "user_score"},
+                    {"label": "Positive Reviews (Count)", "value": "positive"},
+                    {"label": "Negative Reviews (Count)", "value": "negative"},
+                    {"label": "% Positive (total)", "value": "pct_pos_total"},
+                    {"label": "Average Playtime (Minutes)", "value": "average_playtime_forever"},
+                    {"label": "Median Playtime (Minutes)", "value": "median_playtime_forever"},
+                    {"label": "Release Date (Date)", "value": "release_date"},
                 ],
-                value="metacritic_score",
+                value="release_date",
                 clearable=False,
                 className="mb-3",
             ),
@@ -121,8 +115,12 @@ def sidebar():
             dbc.Label("Select Scatter Y-Axis:", className="small text-muted"),
             dcc.Dropdown(
                 id="scatter-y-select",
-                options=[],    
-                value=None,
+                options=[
+                    {"label": "Peak CCU (Count)", "value": "peak_ccu"},
+                    {"label": "Number of Reviews (Count)", "value": "num_reviews_total"},
+                    {"label": "Percentage of Positive Reviews (0-100)", "value": "pct_pos_total"},
+                ],
+                value="pct_pos_total",
                 placeholder="Select Y variable for scatter",
                 clearable=False,
                 className="mb-3",
