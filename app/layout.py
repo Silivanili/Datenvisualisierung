@@ -8,44 +8,58 @@ import dash_bootstrap_components as dbc
 def top_navbar():
     return dbc.Navbar(
         dbc.Container(
-            [
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            dbc.NavbarBrand(
-                                "Steam Dashboard",
-                                className="fw-bold text-white",
-                                style={"fontSize": "1.25rem"},
-                            ),
-                            width="auto",
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dbc.NavbarBrand(
+                            "Steam Dashboard",
+                            className="fw-bold",
+                            style={"fontSize": "1.25rem", "color": "#c6d4df"},
                         ),
-                        dbc.Col(
-                            dbc.Nav(
-                                [
-                                    dbc.NavLink(
-                                        "Game Page", href="/", active="exact", className="text-white fs-6"
-                                    ),
-                                    dbc.NavLink(
-                                        "Genre Page", href="/genre", active="exact", className="text-white fs-6"
-                                    ),
-                                    dbc.NavLink(
-                                        "Developer Page", href="/developer", active="exact", className="text-white fs-6"
-                                    ),
-                                ],
-                                pills=True,
-                                justified=True,
-                                style={"width": "100%", "display": "flex", "justifyContent": "space-evenly"},
-                            ),
-                            width=True,
+                        width="auto",
+                    ),
+                    dbc.Col(
+                        dbc.Nav(
+                            [
+                                dbc.NavLink(
+                                    "Game Page",
+                                    href="/",
+                                    active="exact",
+                                    className="fs-6",
+                                    style={"color": "#c6d4df"},
+                                ),
+                                dbc.NavLink(
+                                    "Genre Page",
+                                    href="/genre",
+                                    active="exact",
+                                    className="fs-6",
+                                    style={"color": "#c6d4df"},
+                                ),
+                                dbc.NavLink(
+                                    "Developer Page",
+                                    href="/developer",
+                                    active="exact",
+                                    className="fs-6",
+                                    style={"color": "#c6d4df"},
+                                ),
+                            ],
+                            pills=True,
+                            justified=True,
+                            style={
+                                "width": "100%",
+                                "display": "flex",
+                                "justifyContent": "space-evenly",
+                            },
                         ),
-                    ],
-                    align="center",
-                    className="g-0 w-100",
-                )
-            ],
+                        width=True,
+                    ),
+                ],
+                align="center",
+                className="g-0 w-100",
+            ),
             fluid=True,
         ),
-        color="primary",
+        color="#171d25",
         dark=True,
         sticky="top",
         className="shadow-sm py-2",
@@ -53,12 +67,12 @@ def top_navbar():
 
 
 # -----------------------------------------------------------------
-# Sidebar 
+# Sidebar
 # -----------------------------------------------------------------
 def sidebar():
     return html.Div(
         [
-            html.H5("Dataset", className="text-primary fw-bold mt-3 mb-2"),
+            html.H5("Dataset"),
             html.P("Size in Memory: ", className="mb-1", id="dataset-size-text"),
             html.P("Games: ", className="mb-1", id="dataset-rows-text"),
             html.P("Top Tags: ", className="mb-2", id="dataset-top-tags"),
@@ -69,7 +83,7 @@ def sidebar():
             ),
             html.Hr(),
 
-            dbc.Label("Select Dataset:", className="small text-muted"),
+            dbc.Label("Select Dataset:"),
             dcc.Dropdown(
                 id="dataset-path",
                 options=[
@@ -89,20 +103,25 @@ def sidebar():
                     color="primary",
                     size="sm",
                     className="w-100",
+                    style={
+                            "backgroundColor": "#c6d4df",
+                            "color": "#000",
+                            "border": "1px solid #9aa7b2",
+                    },
                 ),
                 className="mb-3",
             ),
 
-            dbc.Label("Select Scatter X-Axis:", className="small text-muted"),
+            dbc.Label("Select Scatter X-Axis:"),
             dcc.Dropdown(
                 id="scatter-x-select",
                 options=[
                     {"label": "Price (USD)", "value": "price"},
                     {"label": "Metacritic Score (0-100)", "value": "metacritic_score"},
-                    {"label": "User Score", "value": "user_score"},
-                    {"label": "Positive Reviews (Count)", "value": "positive"},
-                    {"label": "Negative Reviews (Count)", "value": "negative"},
-                    {"label": "% Positive (total)", "value": "pct_pos_total"},
+                    {"label": "User Score (0-100)", "value": "user_score"},
+                    {"label": "Number of positive reviews ", "value": "positive"},
+                    {"label": "Number of negative reviews ", "value": "negative"},
+                    {"label": "Percentage of positive reviews (total)", "value": "pct_pos_total"},
                     {"label": "Average Playtime (Minutes)", "value": "average_playtime_forever"},
                     {"label": "Median Playtime (Minutes)", "value": "median_playtime_forever"},
                     {"label": "Release Date (Date)", "value": "release_date"},
@@ -112,7 +131,7 @@ def sidebar():
                 className="mb-3",
             ),
 
-            dbc.Label("Select Scatter Y-Axis:", className="small text-muted"),
+            dbc.Label("Select Scatter Y-Axis:"),
             dcc.Dropdown(
                 id="scatter-y-select",
                 options=[
@@ -126,18 +145,12 @@ def sidebar():
                 className="mb-3",
             ),
 
-            dbc.Checklist(
-                options=[{"label": "Hide points where Y == 0", "value": "hide"}],
-                value=[],
-                id="hide-zero-reviews",
-                switch=True,
-                className="mb-3",
-            ),
+
 
             dbc.Row(
                 [
-                    dbc.Col(dbc.Label("Filter operator", className="small text-muted"), width=6),
-                    dbc.Col(dbc.Label("Threshold", className="small text-muted"), width=6),
+                    dbc.Col(dbc.Label("Filter operator"), width=6),
+                    dbc.Col(dbc.Label("Threshold"), width=6),
                 ],
                 className="g-0",
             ),
@@ -169,7 +182,7 @@ def sidebar():
 
             html.Hr(),
 
-            dbc.Label("Select Game histogram:", className="small text-muted"),
+            dbc.Label("Select Game histogram:"),
             dcc.Dropdown(
                 id="game-hist-select",
                 options=[],
@@ -177,22 +190,6 @@ def sidebar():
                 placeholder="Select numeric column for game histogram/boxplot",
                 clearable=False,
                 className="mb-3",
-            ),
-
-            dbc.Checklist(
-                options=[{"label": "Swap Histogram for Boxplot", "value": "swap_hist"}],
-                value=[],
-                id="view-settings",
-                switch=True,
-                className="mb-3",
-            ),
-
-            dbc.Checklist(
-                options=[{"label": "Swap Colorscheme", "value": "swap_colors"}],
-                value=[],
-                id="swap-colorscheme",
-                switch=True,
-                className="mb-2",
             ),
 
             dbc.Label(
@@ -204,11 +201,11 @@ def sidebar():
                 # Fixed options – the callback will use the column name directly
                 options=[
                     {"label": "Average user score", "value": "user_score"},
-                    {"label": "Positive reviews", "value": "positive"},
-                    {"label": "Negative reviews", "value": "negative"},
-                    {"label": "Metacritic score", "value": "metacritic_score"},
-                    {"label": "Recommendations",           "value": "recommendations"},
-                    {"label": "% positive (total)",        "value": "pct_pos_total"},
+                    {"label": "Number of positive reviews", "value": "positive"},
+                    {"label": "Number of negative reviews", "value": "negative"},
+                    {"label": "Metacritic score (0-100)", "value": "metacritic_score"},
+                    {"label": "Number of recommendations","value": "recommendations"},
+                    {"label": "Percentage of positive reviews (total)","value": "pct_pos_total"},
 
 
                 ],
@@ -218,12 +215,12 @@ def sidebar():
                 className="mb-3",
             ),
 
-            dbc.Label("Select metric for lineplot:", className="small text-muted"),
+            dbc.Label("Select metric for lineplot:"),
             dcc.Dropdown(
                 id="year-metric-select",
                 options=[
                     {"label": "Number of games", "value": "count"},
-                    {"label": "Peak CCU", "value": "peak_ccu"},
+                    {"label": "Peak CCU (Concurrent Users)", "value": "peak_ccu"},
                 ],
                 value="count",
                 clearable=False,
@@ -232,8 +229,8 @@ def sidebar():
 
             html.Hr(),
 
-            html.H5("Genre Filter", className="text-primary fw-bold mb-2"),
-            dbc.Label("Select Genres:", className="small text-muted"),
+            html.H5("Genre Filter"),
+            dbc.Label("Select Genres:"),
             dcc.Dropdown(
                 id="genre-filter",
                 options=[],
@@ -243,10 +240,10 @@ def sidebar():
                 className="mb-3",
             ),
 
-            dbc.Label("Select Genre Y-Axis:", className="small text-muted"),
+            dbc.Label("Select Genre Y-Axis:"),
             dcc.Dropdown(
                 id="genre-y-select",
-                options=[],    
+                options=[],
                 value=None,
                 placeholder="Select Y variable for genre plots",
                 clearable=False,
@@ -255,8 +252,8 @@ def sidebar():
 
             html.Hr(),
 
-            html.H5("Release Year Range", className="text-primary fw-bold mb-2"),
-            dbc.Label("Filter by release year:", className="small text-muted"),
+            html.H5("Release Year Range"),
+            dbc.Label("Filter by release year:"),
             dcc.RangeSlider(
                 id="release-year-range",
                 min=1970,
@@ -270,7 +267,8 @@ def sidebar():
             ),
         ],
         style={
-            "backgroundColor": "#f8f9fa",
+            "backgroundColor": "#171d25",
+            "color":"#c6d4df",
             "padding": "20px",
             "height": "100vh",
             "borderRight": "1px solid #ddd",
@@ -401,6 +399,19 @@ def genre_page_layout():
 def app_layout():
     return html.Div(
         [
+            html.Link(
+                rel="stylesheet",
+                href="data:text/css;charset=utf-8," + """
+                .navlink-steam {
+                    color: #c6d4df !important;
+                }
+                .navlink-steam-active {
+                    background-color: #c6d4df !important;
+                    color: #000 !important;
+                    font-weight: 600;
+                }
+                """,
+            ),
             dcc.Location(id="url"),
             top_navbar(),
             sidebar(),

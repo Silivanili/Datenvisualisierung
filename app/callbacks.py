@@ -18,6 +18,7 @@ from app.data.processing import (
 )
 from app.plots import (
     scatter_release_vs_fig,
+    genre_releases_subplots,
     histogram_fig_for_column,
     games_per_year_by_genre_fig_from_counts_df,
     STEAM_COLORS,
@@ -25,7 +26,7 @@ from app.plots import (
 )
 from app.layout import developer_page_layout, game_page_layout, genre_page_layout
 from app.utils import get_df_or_none, empty_fig, ensure_list, json_str_to_df
-
+import plotly.graph_objects as go
 log = logging.getLogger(__name__)
 
 @app.callback(
@@ -183,46 +184,55 @@ def display_page(pathname):
         return developer_page_layout()
     return html.H1("404: Page not found", className="text-danger text-center mt-5")
 
+
 @app.callback(
     Output("game-plot1", "figure"),
     Input("df-store", "data"),
     Input("scatter-y-select", "value"),
     Input("scatter-x-select", "value"),
-    Input("hide-zero-reviews", "value"),
-    Input("y-filter-operator", "value"),
-    Input("y-filter-value", "value"),
-    Input("swap-colorscheme", "value"),
 )
-def update_game_scatter(df_meta, y, x, hide_zero, op, thr, swap):
+def update_game_scatter(df_meta, y, x):
+    # Debugging metadata
     if not df_meta:
+        print("[DEBUG] No metadata available.")
         return empty_fig("No data loaded")
+
     df = get_dataset(df_meta["dataset_id"])
     if df is None:
+        print("[DEBUG] Dataset not found!")
         return empty_fig("No data loaded")
-    if not x or not y:
-        return empty_fig("Select both X and Y variables for the scatter plot")
-    color_swap = "swap_colors" in (swap or [])
-    hide = bool(hide_zero and "hide" in hide_zero)
-    return scatter_release_vs_fig(
-        df,
-        x,
-        y,
-        hide_zero=hide,
-        operator=op,
-        threshold=thr,
-        selected_genres=None,
-        color_by_genre=False,
-        color_swap=color_swap,
-    )
+
+    # Verify selected x and y data columns
+    if (x not in df.columns) or (y not in df.columns):
+        print(f"[DEBUG] Column '{x}' or '{y}' not found in dataset!")
+        return empty_fig(f"Selected columns '{x}' or '{y}' are invalid.")
+
+
+
+
+
+    # Call plot generation function
+    try:
+        scatter_plot = scatter_release_vs_fig(
+            df,
+            x,
+            y,
+            hide_zero=False,
+            selected_genres=None,
+
+        )
+        return scatter_plot
+    except Exception as e:
+        print(f"[ERROR] Exception during scatter plot generation: {e}")
+        return empty_fig("Failed to generate scatter plot")
+
 
 @app.callback(
     Output("game-plot2", "figure"),
     Input("df-store", "data"),
     Input("game-hist-select", "value"),
-    Input("view-settings", "value"),
-    Input("swap-colorscheme", "value"),
 )
-def update_game_histogram(df_meta, col, view_settings, swap):
+def update_game_histogram(df_meta, col):
     if not df_meta:
         return empty_fig("No data loaded")
     df = get_dataset(df_meta["dataset_id"])
@@ -230,17 +240,13 @@ def update_game_histogram(df_meta, col, view_settings, swap):
         return empty_fig("No data loaded")
     if not col:
         return empty_fig("No column selected for game histogram")
-    swap_hist = "swap_hist" in (view_settings or [])
-    color_swap = "swap_colors" in (swap or [])
-    if swap_hist:
-        ser = pd.to_numeric(df[col], errors="coerce").dropna()
-        if ser.empty:
-            return empty_fig(f"No numeric data in '{col}'")
-        return px.box(pd.DataFrame({col: ser}), y=col, points="outliers", title=f"{col} distribution (Box‑plot)").update_layout(showlegend=False)
-    return histogram_fig_for_column(df, col, bins=50, color_swap=color_swap)
 
-@app.callback(Output("game-plot3", "figure"), Input("df-store", "data"), Input("swap-colorscheme", "value"))
-def update_game_top_tags(df_meta, swap):
+    # Generate histogram based on default settings (no color swapping logic)
+    return histogram_fig_for_column(df, col, bins=50)
+
+
+@app.callback(Output("game-plot3", "figure"), Input("df-store", "data"))
+def update_game_top_tags(df_meta):
     if not df_meta:
         return empty_fig("No data loaded")
     df = get_dataset(df_meta["dataset_id"])
@@ -249,7 +255,9 @@ def update_game_top_tags(df_meta, swap):
     tags_df = top_tags_from_df(df, top_n=10)
     if tags_df.empty:
         return empty_fig("No tags found")
-    palette = STEAM_COLORS_HIGH_CONTRAST if "swap_colors" in (swap or []) else STEAM_COLORS
+
+    # Use default color scheme hardcoded
+    palette = STEAM_COLORS
     fig = px.bar(tags_df, x="tag", y="count", color="tag", color_discrete_sequence=palette, title="Top Tags")
     fig.update_layout(showlegend=False)
     return fig
@@ -259,16 +267,16 @@ def update_game_top_tags(df_meta, swap):
     Input("df-store", "data"),
     Input("genre-filter", "value"),
     Input("genre-y-select", "value"),
-    Input("swap-colorscheme", "value"),
+
 )
-def update_genre_mean(df_meta, sel_genres, y_var, swap):
+def update_genre_mean(df_meta, sel_genres, y_var):
     if not df_meta or y_var is None:
         return empty_fig("No data loaded")
     df = get_dataset(df_meta["dataset_id"])
     if df is None:
         return empty_fig("No data loaded")
-    color_swap = "swap_colors" in (swap or [])
-    palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
+
+    palette = STEAM_COLORS
     top_n = 10
     sel = tuple(ensure_list(sel_genres))
     json_res = compute_mean_by_genre_json(df_meta["dataset_id"], y_var, top_n, sel)
@@ -339,61 +347,61 @@ def update_genre_mean(df_meta, sel_genres, y_var, swap):
     fig.update_layout(xaxis_tickangle=-45, showlegend=False)
     return fig
 
-@app.callback(
-    Output("genre-plot3", "figure"),
-    Input("df-store", "data"),
-    Input("genre-filter", "value"),
-    Input("release-year-range", "value"),
-    Input("year-metric-select", "value"),
-    Input("swap-colorscheme", "value"),
-)
-def update_genre_yearly(df_meta, sel_genres, yr_range, metric, swap):
-    if not df_meta:
-        return empty_fig("No data loaded")
-    df = get_dataset(df_meta["dataset_id"])
-    if df is None:
-        return empty_fig("No data loaded")
-    color_swap = "swap_colors" in (swap or [])
-    palette = STEAM_COLORS_HIGH_CONTRAST if color_swap else STEAM_COLORS
-    sel = tuple(ensure_list(sel_genres))
-    year_min, year_max = (yr_range or [None, None])
-    if metric == "count":
-        json_counts = compute_games_per_year_counts_json(df_meta["dataset_id"], sel, year_min, year_max)
-        if not json_counts:
-            return empty_fig("No data for selected metric")
-        counts_df = json_str_to_df(json_counts, orient="split")
-        return games_per_year_by_genre_fig_from_counts_df(
-            counts_df,
-            year_min,
-            year_max,
-            genres_order=sel,
-            color_swap=color_swap,
-        )
-    if metric == "peak_ccu":
-        json_ccu = compute_peak_ccu_by_year_json(df_meta["dataset_id"], sel, year_min, year_max)
-        if not json_ccu:
-            return empty_fig("No data for selected metric")
-        ccu_df = json_str_to_df(json_ccu, orient="split")
-        ccu_df["release_year"] = ccu_df["release_year"].astype(int)
-        yr_min = year_min if year_min is not None else int(ccu_df["release_year"].min())
-        yr_max = year_max if year_max is not None else int(ccu_df["release_year"].max())
-        pivot = ccu_df.pivot(index="release_year", columns="main_genre", values="peak_ccu_sum")
-        if sel:
-            desired = [g for g in sel if g in pivot.columns]
-            pivot = pivot.reindex(columns=desired, fill_value=0)
-        pivot = pivot.reindex(range(yr_min, yr_max + 1), fill_value=0)
-        melt = pivot.reset_index().melt(id_vars="release_year", var_name="main_genre", value_name="peak_ccu_sum")
-        fig = px.line(
-            melt,
-            x="release_year",
-            y="peak_ccu_sum",
-            color="main_genre",
-            markers=True,
-            color_discrete_sequence=palette,
-            title="Peak CCU per Year by Genre",
-        )
-        return fig
-    return empty_fig("Unknown metric")
+#app.callback(
+#   Output("genre-plot3", "figure"),
+#   Input("df-store", "data"),
+#   Input("genre-filter", "value"),
+#   Input("release-year-range", "value"),
+#   Input("year-metric-select", "value"),
+
+#
+#ef update_genre_yearly(df_meta, sel_genres, yr_range, metric):
+#   if not df_meta:
+#       return empty_fig("No data loaded")
+#   df = get_dataset(df_meta["dataset_id"])
+#   if df is None:
+#       return empty_fig("No data loaded")
+
+#   palette = STEAM_COLORS
+#   sel = tuple(ensure_list(sel_genres))
+#   year_min, year_max = (yr_range or [None, None])
+#   if metric == "count":
+#       json_counts = compute_games_per_year_counts_json(df_meta["dataset_id"], sel, year_min, year_max)
+#       if not json_counts:
+#           return empty_fig("No data for selected metric")
+#       counts_df = json_str_to_df(json_counts, orient="split")
+#       return games_per_year_by_genre_fig_from_counts_df(
+#           counts_df,
+#           year_min,
+#           year_max,
+#           genres_order=sel,
+
+#       )
+#   if metric == "peak_ccu":
+#       json_ccu = compute_peak_ccu_by_year_json(df_meta["dataset_id"], sel, year_min, year_max)
+#       if not json_ccu:
+#           return empty_fig("No data for selected metric")
+#       ccu_df = json_str_to_df(json_ccu, orient="split")
+#       ccu_df["release_year"] = ccu_df["release_year"].astype(int)
+#       yr_min = year_min if year_min is not None else int(ccu_df["release_year"].min())
+#       yr_max = year_max if year_max is not None else int(ccu_df["release_year"].max())
+#       pivot = ccu_df.pivot(index="release_year", columns="main_genre", values="peak_ccu_sum")
+#       if sel:
+#           desired = [g for g in sel if g in pivot.columns]
+#           pivot = pivot.reindex(columns=desired, fill_value=0)
+#       pivot = pivot.reindex(range(yr_min, yr_max + 1), fill_value=0)
+#       melt = pivot.reset_index().melt(id_vars="release_year", var_name="main_genre", value_name="peak_ccu_sum")
+#       fig = px.line(
+#           melt,
+#           x="release_year",
+#           y="peak_ccu_sum",
+#           color="main_genre",
+#           markers=True,
+#           color_discrete_sequence=palette,
+#           title="Peak CCU per Year by Genre",
+#       )
+#       return fig
+#   return empty_fig("Unknown metric")
 
 @app.callback(
     Output("game-hist-select", "options"),
@@ -414,9 +422,9 @@ def populate_game_hist_options(df_meta):
     Input("df-store", "data"),
     Input("genre-filter", "value"),
     Input("genre-bubble-y-select", "value"),
-    Input("swap-colorscheme", "value"),
+
 )
-def update_genre_scatter_bubble(df_meta, sel_genres, y_metric, swap):
+def update_genre_scatter_bubble(df_meta, sel_genres, y_metric):
     if not df_meta:
         return empty_fig("No data loaded")
     df = get_dataset(df_meta["dataset_id"])
@@ -440,7 +448,7 @@ def update_genre_scatter_bubble(df_meta, sel_genres, y_metric, swap):
     )
     if agg.empty:
         return empty_fig("No data after aggregation")
-    palette = STEAM_COLORS_HIGH_CONTRAST if "swap_colors" in (swap or []) else STEAM_COLORS
+    palette = STEAM_COLORS
     y_labels = {
         "user_score": "Average user score",
         "positive": "Average positive reviews",
@@ -460,3 +468,16 @@ def update_genre_scatter_bubble(df_meta, sel_genres, y_metric, swap):
     )
     fig.update_layout(xaxis_title="Average Price", yaxis_title=y_label)
     return fig
+@app.callback(
+    Output("genre-plot3", "figure"),
+    Input("df-store", "data"),
+)
+def update_genre_releases_subplot(df_meta):
+    if not df_meta:
+        return empty_fig("No data loaded")
+    df = get_dataset(df_meta["dataset_id"])
+    if df is None:
+        return empty_fig("No data loaded")
+
+    # Generate the plot with side-by-side arrangement and improved spacing
+    return genre_releases_subplots(df, max_genres=4)  # Limit to 10 genres for clarity # Limit to 8 genres for better layout

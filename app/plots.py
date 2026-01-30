@@ -6,7 +6,9 @@ from app.data.processing import estimated_owners_to_numeric_series
 from app.config import MAX_SCATTER_POINTS
 from app.utils import empty_fig, ensure_list
 import numpy as np
-
+from plotly.subplots import make_subplots
+from plotly import graph_objects as go
+from math import ceil
 STEAM_COLORS = [
     "#1b2838",
     "#66c0f4",
@@ -161,7 +163,7 @@ def scatter_release_vs_fig(
     threshold: Optional[float] = None,
     selected_genres=None,
     max_points: int = MAX_SCATTER_POINTS,
-    color_by_genre: bool = True,
+    color_by_genre: bool = False,
     color_swap: bool = False,
 ):
     # Define units for recognized columns
@@ -218,12 +220,140 @@ def scatter_release_vs_fig(
         color="main_genre" if color_by_genre and "main_genre" in data.columns else None,
         opacity=0.6,  # Reduce opacity for readability
         hover_data=["name", "appid"] if "appid" in data.columns else None,
-        title=f"{y_col} vs {x_col}",
+        title=f"{y_col} over release date",
     )
     fig.update_layout(xaxis_title=x_label, yaxis_title=y_label)
 
     # Explicitly set the x-axis type as datetime for release_date
     if x_col == "release_date":
         fig.update_xaxes(type="date")  # Ensure proper datetime handling for x-axis
+
+    return fig
+
+#def genre_releases_subplots(df: pd.DataFrame, max_genres: int = 10):
+#    """
+#    Create subplots for the number of new game releases across genres by year.
+#    Each subplot visualizes data for the top genres based on total release counts.
+#    """
+#    if df is None or "release_year" not in df.columns or "main_genre" not in df.columns:
+#        return empty_fig("No valid data for genre releases.")
+#
+#    # Ensure release_year is numeric and main_genre exists
+#    df = df.copy()
+#    df["release_year"] = pd.to_numeric(df["release_year"], errors="coerce")
+#    df = df.dropna(subset=["release_year", "main_genre"])
+#
+#    # Aggregate data: count total releases per genre
+#    genre_total_counts = df["main_genre"].value_counts().reset_index()
+#    genre_total_counts.columns = ["main_genre", "total_releases"]
+#
+#    # Select top genres based on total release counts
+#    top_genres = genre_total_counts.nlargest(max_genres, "total_releases")["main_genre"]
+#    genre_year_counts = df[df["main_genre"].isin(top_genres)].groupby(["main_genre", "release_year"]).size().reset_index(name="release_count")
+#
+#    # Create subplots
+#    fig = make_subplots(
+#        rows=len(top_genres),
+#        cols=1,
+#        shared_xaxes=True,
+#        vertical_spacing=0.02,  # Adjust spacing between plots
+#        subplot_titles=[f"{genre}" for genre in top_genres],
+#    )
+#
+#    # Add traces for each genre
+#    for i, genre in enumerate(top_genres):
+#        genre_data = genre_year_counts[genre_year_counts["main_genre"] == genre]
+#        trace = go.Scatter(
+#            x=genre_data["release_year"],
+#            y=genre_data["release_count"],
+#            mode="lines+markers",
+#            name=genre,
+#            showlegend=False,  # Turn off legend for subplots
+#        )
+#        fig.add_trace(trace, row=i + 1, col=1)
+#
+#    # Update axis title
+#    fig.update_xaxes(title_text="Year", row=len(top_genres), col=1)
+#    fig.update_yaxes(title_text="New Releases")
+#
+#    # Dynamically adjust plot height
+#    fig_height = 300 * len(top_genres)
+#    fig.update_layout(
+#        height=fig_height,
+#        title_text="Genres with the highest amount of releases",
+#        title_x=0.5,
+#        template="plotly_white",
+#    )
+#
+#    return fig
+
+
+def genre_releases_subplots(df: pd.DataFrame, max_genres: int = 10):
+    """
+    Create subplots for the number of new game releases across genres by year.
+    Arrange the plots in two columns side by side with improved spacing for clarity.
+    """
+    if df is None or "release_year" not in df.columns or "main_genre" not in df.columns:
+        return empty_fig("No valid data for genre releases.")
+
+    # Ensure release_year is numeric and main_genre exists
+    df = df.copy()
+    df["release_year"] = pd.to_numeric(df["release_year"], errors="coerce")
+    df = df.dropna(subset=["release_year", "main_genre"])
+
+    # Aggregate data: count total releases per genre
+    genre_total_counts = df["main_genre"].value_counts().reset_index()
+    genre_total_counts.columns = ["main_genre", "total_releases"]
+
+    # Select top genres based on total release counts
+    top_genres = genre_total_counts.nlargest(max_genres, "total_releases")["main_genre"]
+
+    # Group the data by genre and year
+    genre_year_counts = df[df["main_genre"].isin(top_genres)].groupby(
+        ["main_genre", "release_year"]).size().reset_index(name="release_count")
+
+    # Determine number of rows needed for two columns
+    num_rows = ceil(len(top_genres) / 2)  # Two columns -> One row for every two genres
+
+    # Create subplots with improved spacing
+    fig = make_subplots(
+        rows=num_rows,
+        cols=2,
+        shared_xaxes=True,  # Share X-axis across columns
+        vertical_spacing=0.15,  # Increased spacing between rows
+        horizontal_spacing=0.075,  # Increased spacing between columns
+        subplot_titles=[f"{genre}" for genre in top_genres],
+    )
+
+    # Add traces for each genre
+    for i, genre in enumerate(top_genres):
+        genre_data = genre_year_counts[genre_year_counts["main_genre"] == genre]
+
+        # Determine row and column placement
+        row = (i // 2) + 1  # Divide into pairs for a new row
+        col = (i % 2) + 1  # Alternate between column 1 and 2
+
+        trace = go.Scatter(
+            x=genre_data["release_year"],
+            y=genre_data["release_count"],
+            mode="lines+markers",
+            name=genre,
+            showlegend=False,  # Turn off legend for subplots
+        )
+        fig.add_trace(trace, row=row, col=col)
+
+    # Update axis titles
+    for r in range(1, num_rows + 1):
+        fig.update_xaxes(title_text="Year", row=r, col=1)  # Add X-axis title only for the first column
+    fig.update_yaxes(title_text="New Releases")
+
+    # Adjust overall layout with margins
+    fig.update_layout(
+        height=250 * num_rows,  # Adjust height dynamically based on number of rows
+        margin=dict(t=50, l=50, r=50, b=50),  # Added margins for clarity
+        title_text="Genre growth based on amount of releases",
+        title_x=0.5,
+        template="plotly_white",
+    )
 
     return fig

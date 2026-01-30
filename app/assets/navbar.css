@@ -1,0 +1,51 @@
+/* inactive nav links */
+.navbar .nav-link {
+    color: #c6d4df ;
+}
+
+/* ACTIVE nav link (this fixes your problem) */
+.navbar .nav-pills .nav-link.active {
+    background-color: #c6d4df ;
+    color: #000 ;
+    font-weight: 600;
+}
+/* Force readable text on active pill in dark navbar */
+.navbar-dark .nav-pills .nav-link.active {
+    color: #000 !important;        /* readable text */
+    background-color: #c6d4df !important;
+}
+/* Style for the dropdown menu container */
+.dropdown-menu {
+    background-color: #171d25; /* Background color */
+    border: 1px solid #c6d4df; /* Border color */
+}
+
+/* Style for individual dropdown items */
+.dropdown-item {
+    color: #0f0f0f; /* Text color for dropdown items */
+    background-color: #c6d4df; /* Background color */
+}
+
+/* Hover effect for dropdown items */
+.dropdown-item:hover, .dropdown-item:focus {
+    color: #0f0f0f; /* Text color for dropdown items */
+    background-color: #c6d4df; /* Background color */
+}
+
+/* Style the dropdown container options */
+.VirtualizedSelectOption {
+    color: #0f0f0f; /* Text color for dropdown items */
+    background-color: #c6d4df; /* Background color for dropdown items */
+}
+
+/* Style dropdown items on hover/focus */
+.VirtualizedSelectOption:hover, .VirtualizedSelectOption:focus {
+    background-color: #c6d4df; /* Light gray background for hover */
+    color: #0f0f0f; /* Text color when hovered */
+}
+
+/* Style the selected dropdown item */
+.VirtualizedSelectFocusedOption {
+    background-color: #c6d4df; /* Gray background for focused option */
+    color: #0f0f0f; /* Text color for focused option */
+}
