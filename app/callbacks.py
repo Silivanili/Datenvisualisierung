@@ -253,13 +253,23 @@ def update_game_top_tags(df_meta):
     df = get_dataset(df_meta["dataset_id"])
     if df is None:
         return empty_fig("No data loaded")
-    tags_df = top_tags_from_df(df, top_n=10)
+
+    # Call the updated tags processing function
+    tags_df = top_tags_from_df(df, top_n=10, tags_col="tags")
+
+    # Handle case where no tags are found
     if tags_df.empty:
         return empty_fig("No tags found")
 
-    # Use default color scheme hardcoded
-    palette = STEAM_COLORS
-    fig = px.bar(tags_df, x="tag", y="count", color="tag", color_discrete_sequence=palette, title="Top Tags")
+    # Plot using processed tags dataframe
+    fig = px.bar(
+        tags_df,
+        x="tag",
+        y="count",
+        color="tag",
+        title="Top Tags by Occurrence",
+        color_discrete_sequence=STEAM_COLORS,
+    )
     fig.update_layout(showlegend=False)
     return fig
 

@@ -257,14 +257,36 @@ def parse_tags_cell(x):
     seen = set()
     return [t for t in cleaned if t not in seen and not seen.add(t)]
 
-def top_tags_from_df(df, top_n=10, tags_col="tags"):
+def top_tags_from_df(df: pd.DataFrame, top_n: int = 10, tags_col: str = "tags"):
+    """
+    Extract top N tags based on occurrences in the dataframe.
+    """
     if df is None or tags_col not in df.columns:
-        return pd.DataFrame(columns=["tag", "count"])
-    series = df[tags_col].dropna().map(parse_tags_cell)
-    exploded = series.explode().dropna().astype(str)
-    if exploded.empty:
-        return pd.DataFrame(columns=["tag", "count"])
-    counts = exploded.value_counts().reset_index()
-    counts.columns = ["tag", "count"]
-    counts = counts.sort_values(by=["count", "tag"], ascending=[False, True]).reset_index(drop=True)
-    return counts.head(int(top_n))
+        return pd.DataFrame()
+
+    # Ensure the column is clean
+    tags_series = df[tags_col].dropna()
+
+    # Handle 'tags' format: clean structured tags like {'Tag1': value, 'Tag2': value}
+    def extract_tags(value):
+        if isinstance(value, dict):  # Parse dictionary keys
+            return list(value.keys())
+        elif isinstance(value, str):  # Parse strings (e.g., JSON-style dictionary)
+            try:
+                parsed = eval(value)
+                return list(parsed.keys()) if isinstance(parsed, dict) else []
+            except Exception:
+                return []  # Return empty on parse failure
+        elif isinstance(value, list):  # Already a list of tags
+            return value
+        else:
+            return []  # Return empty otherwise
+
+    # Apply tag extraction and flatten
+    all_tags = pd.Series([tag for tags_list in tags_series.map(extract_tags) for tag in tags_list])
+
+    # Group by tag occurrences and sort by frequency
+    top_tags = all_tags.value_counts().nlargest(top_n).reset_index()
+    top_tags.columns = ["tag", "count"]
+
+    return top_tags

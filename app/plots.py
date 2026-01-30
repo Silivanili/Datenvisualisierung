@@ -220,7 +220,7 @@ def scatter_release_vs_fig(
         color="main_genre" if color_by_genre and "main_genre" in data.columns else None,
         opacity=0.6,  # Reduce opacity for readability
         hover_data=["name", "appid"] if "appid" in data.columns else None,
-        title=f"{y_col} over release date",
+        title=f"Scatterplot for all games",
     )
     fig.update_layout(xaxis_title=x_label, yaxis_title=y_label)
 
