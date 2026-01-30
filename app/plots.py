@@ -230,63 +230,6 @@ def scatter_release_vs_fig(
 
     return fig
 
-#def genre_releases_subplots(df: pd.DataFrame, max_genres: int = 10):
-#    """
-#    Create subplots for the number of new game releases across genres by year.
-#    Each subplot visualizes data for the top genres based on total release counts.
-#    """
-#    if df is None or "release_year" not in df.columns or "main_genre" not in df.columns:
-#        return empty_fig("No valid data for genre releases.")
-#
-#    # Ensure release_year is numeric and main_genre exists
-#    df = df.copy()
-#    df["release_year"] = pd.to_numeric(df["release_year"], errors="coerce")
-#    df = df.dropna(subset=["release_year", "main_genre"])
-#
-#    # Aggregate data: count total releases per genre
-#    genre_total_counts = df["main_genre"].value_counts().reset_index()
-#    genre_total_counts.columns = ["main_genre", "total_releases"]
-#
-#    # Select top genres based on total release counts
-#    top_genres = genre_total_counts.nlargest(max_genres, "total_releases")["main_genre"]
-#    genre_year_counts = df[df["main_genre"].isin(top_genres)].groupby(["main_genre", "release_year"]).size().reset_index(name="release_count")
-#
-#    # Create subplots
-#    fig = make_subplots(
-#        rows=len(top_genres),
-#        cols=1,
-#        shared_xaxes=True,
-#        vertical_spacing=0.02,  # Adjust spacing between plots
-#        subplot_titles=[f"{genre}" for genre in top_genres],
-#    )
-#
-#    # Add traces for each genre
-#    for i, genre in enumerate(top_genres):
-#        genre_data = genre_year_counts[genre_year_counts["main_genre"] == genre]
-#        trace = go.Scatter(
-#            x=genre_data["release_year"],
-#            y=genre_data["release_count"],
-#            mode="lines+markers",
-#            name=genre,
-#            showlegend=False,  # Turn off legend for subplots
-#        )
-#        fig.add_trace(trace, row=i + 1, col=1)
-#
-#    # Update axis title
-#    fig.update_xaxes(title_text="Year", row=len(top_genres), col=1)
-#    fig.update_yaxes(title_text="New Releases")
-#
-#    # Dynamically adjust plot height
-#    fig_height = 300 * len(top_genres)
-#    fig.update_layout(
-#        height=fig_height,
-#        title_text="Genres with the highest amount of releases",
-#        title_x=0.5,
-#        template="plotly_white",
-#    )
-#
-#    return fig
-
 
 def genre_releases_subplots(df: pd.DataFrame, max_genres: int = 10):
     """
@@ -356,4 +299,58 @@ def genre_releases_subplots(df: pd.DataFrame, max_genres: int = 10):
         template="plotly_white",
     )
 
+    return fig
+
+
+def genre_metric_subplots(agg_df: pd.DataFrame, metric_name: str = "Number of Releases", max_genres: int = 10,) -> go.Figure:
+    
+    if agg_df is None or agg_df.empty:
+        return empty_fig("No data for selected metric / year range")
+
+    top_genres = (
+        agg_df.groupby("main_genre")["value"]
+        .sum()
+        .nlargest(max_genres)
+        .index
+        .tolist()
+    )
+    df_plot = agg_df[agg_df["main_genre"].isin(top_genres)]
+
+    num_rows = ceil(len(top_genres) / 2)
+
+    fig = make_subplots(
+        rows=num_rows,
+        cols=2,
+        shared_xaxes=True,
+        vertical_spacing=0.15,
+        horizontal_spacing=0.075,
+        subplot_titles=[f"{g}" for g in top_genres],
+    )
+
+    for i, genre in enumerate(top_genres):
+        genre_data = df_plot[df_plot["main_genre"] == genre]
+
+        row = (i // 2) + 1
+        col = (i % 2) + 1
+
+        trace = go.Scatter(
+            x=genre_data["release_year"],
+            y=genre_data["value"],
+            mode="lines+markers",
+            name=genre,
+            showlegend=False,
+        )
+        fig.add_trace(trace, row=row, col=col)
+
+    for r in range(1, num_rows + 1):
+        fig.update_xaxes(title_text="Year", row=r, col=1)  
+        fig.update_yaxes(title_text=metric_name, row=r, col=1)
+
+    fig.update_layout(
+        height=250 * num_rows,
+        margin=dict(t=60, l=60, r=60, b=60),
+        title_text=f"Genre growth – {metric_name}",
+        title_x=0.5,
+        template="plotly_white",
+    )
     return fig

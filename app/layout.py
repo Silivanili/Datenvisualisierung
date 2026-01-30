@@ -147,38 +147,7 @@ def sidebar():
 
 
 
-            dbc.Row(
-                [
-                    dbc.Col(dbc.Label("Filter operator"), width=6),
-                    dbc.Col(dbc.Label("Threshold"), width=6),
-                ],
-                className="g-0",
-            ),
-            dbc.Row(
-                [
-                    dbc.Col(
-                        dcc.Dropdown(
-                            id="y-filter-operator",
-                            options=[
-                                {"label": "=", "value": "eq"},
-                                {"label": ">=", "value": "ge"},
-                                {"label": "<=", "value": "le"},
-                                {"label": ">", "value": "gt"},
-                                {"label": "<", "value": "lt"},
-                            ],
-                            placeholder="Operator",
-                            clearable=True,
-                            className="mb-2",
-                        ),
-                        width=6,
-                    ),
-                    dbc.Col(
-                        dbc.Input(id="y-filter-value", type="number", placeholder="Value", size="sm", className="mb-2"),
-                        width=6,
-                    ),
-                ],
-                className="mb-3",
-            ),
+            
 
             html.Hr(),
 
@@ -194,7 +163,8 @@ def sidebar():
 
             dbc.Label(
                 "Bubble‑plot Y‑axis:",
-                className="small text-muted",
+                className="small",
+                style={"color": "#c6d4df"},
             ),
             dcc.Dropdown(
                 id="genre-bubble-y-select",

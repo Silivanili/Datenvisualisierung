@@ -19,6 +19,7 @@ from app.data.processing import (
 from app.plots import (
     scatter_release_vs_fig,
     genre_releases_subplots,
+    genre_metric_subplots,
     histogram_fig_for_column,
     games_per_year_by_genre_fig_from_counts_df,
     STEAM_COLORS,
@@ -27,6 +28,7 @@ from app.plots import (
 from app.layout import developer_page_layout, game_page_layout, genre_page_layout
 from app.utils import get_df_or_none, empty_fig, ensure_list, json_str_to_df
 import plotly.graph_objects as go
+
 log = logging.getLogger(__name__)
 
 @app.callback(
@@ -354,65 +356,9 @@ def update_genre_mean(df_meta, sel_genres, y_var):
         fig.update_layout(title=f"Mean {y_var} by Genre (Top {len(agg_df)})", xaxis_tickangle=-45, showlegend=False)
         return fig
     ycol = [c for c in agg_df.columns if c != "main_genre"][0]
-    fig = px.bar(agg_df, x="main_genre", y=ycol, color="main_genre", color_discrete_sequence=palette, title=f"Mean {y_var} by Genre (Top {len(agg_df)})")
+    fig = px.bar(agg_df, x="main_genre", y=ycol, color="main_genre", color_discrete_sequence=palette, title=f"Chosen amount of Playtime by Genre")
     fig.update_layout(xaxis_tickangle=-45, showlegend=False)
     return fig
-
-#app.callback(
-#   Output("genre-plot3", "figure"),
-#   Input("df-store", "data"),
-#   Input("genre-filter", "value"),
-#   Input("release-year-range", "value"),
-#   Input("year-metric-select", "value"),
-
-#
-#ef update_genre_yearly(df_meta, sel_genres, yr_range, metric):
-#   if not df_meta:
-#       return empty_fig("No data loaded")
-#   df = get_dataset(df_meta["dataset_id"])
-#   if df is None:
-#       return empty_fig("No data loaded")
-
-#   palette = STEAM_COLORS
-#   sel = tuple(ensure_list(sel_genres))
-#   year_min, year_max = (yr_range or [None, None])
-#   if metric == "count":
-#       json_counts = compute_games_per_year_counts_json(df_meta["dataset_id"], sel, year_min, year_max)
-#       if not json_counts:
-#           return empty_fig("No data for selected metric")
-#       counts_df = json_str_to_df(json_counts, orient="split")
-#       return games_per_year_by_genre_fig_from_counts_df(
-#           counts_df,
-#           year_min,
-#           year_max,
-#           genres_order=sel,
-
-#       )
-#   if metric == "peak_ccu":
-#       json_ccu = compute_peak_ccu_by_year_json(df_meta["dataset_id"], sel, year_min, year_max)
-#       if not json_ccu:
-#           return empty_fig("No data for selected metric")
-#       ccu_df = json_str_to_df(json_ccu, orient="split")
-#       ccu_df["release_year"] = ccu_df["release_year"].astype(int)
-#       yr_min = year_min if year_min is not None else int(ccu_df["release_year"].min())
-#       yr_max = year_max if year_max is not None else int(ccu_df["release_year"].max())
-#       pivot = ccu_df.pivot(index="release_year", columns="main_genre", values="peak_ccu_sum")
-#       if sel:
-#           desired = [g for g in sel if g in pivot.columns]
-#           pivot = pivot.reindex(columns=desired, fill_value=0)
-#       pivot = pivot.reindex(range(yr_min, yr_max + 1), fill_value=0)
-#       melt = pivot.reset_index().melt(id_vars="release_year", var_name="main_genre", value_name="peak_ccu_sum")
-#       fig = px.line(
-#           melt,
-#           x="release_year",
-#           y="peak_ccu_sum",
-#           color="main_genre",
-#           markers=True,
-#           color_discrete_sequence=palette,
-#           title="Peak CCU per Year by Genre",
-#       )
-#       return fig
-#   return empty_fig("Unknown metric")
 
 @app.callback(
     Output("game-hist-select", "options"),
@@ -475,20 +421,52 @@ def update_genre_scatter_bubble(df_meta, sel_genres, y_metric):
         color="main_genre",
         color_discrete_sequence=palette,
         hover_data={"price_mean": ":.2f", "y_mean": ":.0f", "playtime_mean": ":.0f", "main_genre": True},
-        title=f"Average Price vs. {y_label} (Bubble size = Avg Playtime) by Genre",
+        title=f"Average Price vs. reviews by Genre",
     )
     fig.update_layout(xaxis_title="Average Price", yaxis_title=y_label)
     return fig
+
+
 @app.callback(
     Output("genre-plot3", "figure"),
     Input("df-store", "data"),
+    Input("year-metric-select", "value"),   
+    Input("release-year-range", "value"),   
 )
-def update_genre_releases_subplot(df_meta):
+def update_genre_releases_subplot(df_meta, metric, year_range):
+
     if not df_meta:
-        return empty_fig("No data loaded")
+        return empty_fig("No dataset loaded")
+
     df = get_dataset(df_meta["dataset_id"])
     if df is None:
-        return empty_fig("No data loaded")
+        return empty_fig("Dataset could not be retrieved")
 
-    # Generate the plot with side-by-side arrangement and improved spacing
-    return genre_releases_subplots(df, max_genres=4)  # Limit to 10 genres for clarity # Limit to 8 genres for better layout
+    df = df.copy()
+    df["release_year"] = pd.to_numeric(df["release_year"], errors="coerce")
+    df = df.dropna(subset=["release_year", "main_genre"])
+
+
+    min_year, max_year = year_range  
+    df = df[(df["release_year"] >= min_year) & (df["release_year"] <= max_year)]
+
+    if metric == "peak_ccu" and "peak_ccu" in df.columns:
+        agg = (
+            df.groupby(["main_genre", "release_year"], observed=True)["peak_ccu"]
+            .sum()
+            .reset_index(name="value")
+        )
+        title_metric = "Peak CCU (sum)"
+    else:
+        agg = (
+            df.groupby(["main_genre", "release_year"], observed=True)
+            .size()
+            .reset_index(name="value")
+        )
+        title_metric = "Number of Releases"
+
+    return genre_metric_subplots(
+        agg_df=agg,
+        metric_name=title_metric,
+        max_genres=4,              
+    )
