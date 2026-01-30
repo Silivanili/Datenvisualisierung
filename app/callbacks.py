@@ -69,14 +69,12 @@ def populate_scatter_y(df_meta):
     if df is None:
         return [], "release_date", [], "pct_pos_total"  # Default fallback
 
-    # Define all column options dynamically with units/labels
+    # Define units for recognized columns
     column_units = {
         "appid": "Identifier",
-        "name": "String",
         "required_age": "Integer",
         "dlc_count": "Integer",
         "recommendations": "Integer",
-        "publishers": "String",
         "num_reviews_total": "Number of reviews (total)",
         "num_reviews_recent": "Number of reviews (recent)",
         "main_genre": "String",
@@ -89,17 +87,20 @@ def populate_scatter_y(df_meta):
         "positive": "Positive Reviews (Integer)",
         "negative": "Negative Reviews (Integer)",
         "pct_pos_total": "Percentage positive reviews (total)",
-        "pct_pos_recent":"Percentage positive reviews (recent)",
+        "pct_pos_recent": "Percentage positive reviews (recent)",
         "average_playtime_forever": "Minutes",
         "median_playtime_forever": "Minutes",
         "average_playtime_2weeks": "Minutes",
         "median_playtime_2weeks": "Minutes",
         "release_date": "Datetime",
-
     }
-    options = [{"label": f"{col} ({column_units.get(col, 'Units')})", "value": col} for col in df.columns]
 
-    # Default to release_date and pct_pos_total
+    # Use only columns that have corresponding units defined in column_units
+    options = [
+        {"label": f"{col} ({column_units[col]})", "value": col}
+        for col in df.columns if col in column_units
+    ]
+
     return options, "release_date", options, "pct_pos_total"
 
 @app.callback(
